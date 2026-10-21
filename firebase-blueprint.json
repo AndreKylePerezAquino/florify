@@ -30,7 +30,7 @@
         "active": { "type": "boolean", "description": "Whether device is enabled and active" },
         "status": { "type": "string", "enum": ["ONLINE", "OFFLINE", "SENSOR_ERROR", "DISABLED", "UNKNOWN"], "description": "Real-time connectivity and health status" },
         "firmwareVersion": { "type": "string", "maxLength": 32, "description": "Installed ESP32 firmware version" },
-        "sensorType": { "type": "string", "enum": ["DHT22"], "description": "Hardware sensor type" },
+        "sensorType": { "type": "string", "enum": ["DHT11"], "description": "Hardware sensor type" },
         "lastSeenAt": { "type": "string", "format": "date-time", "description": "Timestamp of most recent heartbeat or reading" },
         "lastReadingAt": { "type": "string", "format": "date-time", "description": "Timestamp of most recent valid sensor reading" },
         "latestTemperatureC": { "type": "number", "description": "Latest reported temperature in degrees Celsius" },
@@ -68,14 +68,14 @@
     },
     "deviceReading": {
       "title": "DeviceReading",
-      "description": "Historical time-series sample of DHT22 temperature, humidity, and fan relay telemetry",
+      "description": "Historical time-series sample of DHT11 temperature, humidity, and fan relay telemetry",
       "type": "object",
       "properties": {
         "temperatureC": { "type": "number", "description": "Sample temperature in degrees Celsius" },
         "humidityRH": { "type": "number", "description": "Sample relative humidity in % RH" },
         "fanState": { "type": "string", "enum": ["ON", "OFF", "UNKNOWN"], "description": "Observed fan relay state" },
         "operatingMode": { "type": "string", "enum": ["AUTO", "FORCE_ON", "FORCE_OFF"], "description": "Active operating mode during sample" },
-        "sensorHealthy": { "type": "boolean", "description": "Whether DHT22 checksum and bus communication succeeded" },
+        "sensorHealthy": { "type": "boolean", "description": "Whether DHT11 checksum and bus communication succeeded" },
         "configVersion": { "type": "number", "description": "Active configuration version during sample" },
         "deviceRecordedAt": { "type": "string", "format": "date-time", "description": "Timestamp recorded by ESP32 internal clock" },
         "receivedAt": { "type": "string", "format": "date-time", "description": "Authoritative server receipt timestamp" }
@@ -131,7 +131,7 @@
     },
     "/devices/{deviceId}/readings/{readingId}": {
       "schema": "deviceReading",
-      "description": "Time-series DHT22 readings and relay status records"
+      "description": "Time-series DHT11 readings and relay status records"
     },
     "/alerts/{alertId}": {
       "schema": "alert",

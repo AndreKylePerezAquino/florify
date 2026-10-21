@@ -28,7 +28,7 @@ export interface Device {
   active: boolean;
   status: DeviceStatus;
   firmwareVersion: string;
-  sensorType: 'DHT11' | 'DHT22';
+  sensorType: 'DHT11';
   lastSeenAt?: string;
   lastReadingAt?: string;
   latestTemperatureC?: number;
