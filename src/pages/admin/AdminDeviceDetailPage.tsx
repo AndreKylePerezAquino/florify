@@ -44,6 +44,8 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
     allUsers,
     setFanOverride,
     returnToAuto,
+    setMistOverride,
+    returnMistToAuto,
     assignDevice,
     rotateDeviceCredential,
   } = useApp();
@@ -85,6 +87,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
   // Override modal state
   const [overrideModalOpen, setOverrideModalOpen] = useState(false);
   const [firmwareModalOpen, setFirmwareModalOpen] = useState(false);
+  const [overrideTarget, setOverrideTarget] = useState<'fan' | 'mist'>('fan');
   const [overrideMode, setOverrideMode] = useState<'FORCE_ON' | 'FORCE_OFF'>('FORCE_ON');
   const [overrideDuration, setOverrideDuration] = useState<number>(30); // 30 mins
   const [overrideReason, setOverrideReason] = useState<string>('Pre-cooling shuttle before boarding');
@@ -107,7 +110,11 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
 
   const handleApplyOverride = async (e: React.FormEvent) => {
     e.preventDefault();
-    await setFanOverride(device.deviceId, overrideMode, overrideDuration, overrideReason);
+    if (overrideTarget === 'fan') {
+      await setFanOverride(device.deviceId, overrideMode, overrideDuration, overrideReason);
+    } else {
+      await setMistOverride(device.deviceId, overrideMode, overrideDuration, overrideReason);
+    }
     setOverrideModalOpen(false);
     setOverrideConfirmChecked(false);
   };
@@ -363,21 +370,81 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
               <>
                 <button
                   onClick={() => {
+                    setOverrideTarget('fan');
                     setOverrideMode('FORCE_ON');
                     setOverrideModalOpen(true);
                   }}
-                  className="px-3 py-1.5 bg-[#FFF7F9] hover:bg-[#FFDBDB] text-[#C72C5E] border border-[#FDC3D1] text-xs font-semibold rounded-lg"
+                  className="px-3 py-1.5 bg-[#FFF7F9] hover:bg-[#FFDBDB] text-[#C72C5E] border border-[#FDC3D1] text-xs font-semibold rounded-lg cursor-pointer"
                 >
                   Force Fan ON
                 </button>
                 <button
                   onClick={() => {
+                    setOverrideTarget('fan');
                     setOverrideMode('FORCE_OFF');
                     setOverrideModalOpen(true);
                   }}
-                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg"
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg cursor-pointer"
                 >
                   Force Fan OFF
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Manual Misting Control Bar */}
+      <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
+              <CloudRain className="h-4 w-4 text-sky-600" />
+              Manual Misting / Humidifier Override Controls
+            </h3>
+            <p className="text-xs text-[#826674]">
+              Current misting mode:{' '}
+              <strong className="text-sky-700 uppercase">{liveConfig?.mistMode || 'AUTO'}</strong>
+              {liveConfig?.overrideExpiresAt && liveConfig?.mistMode !== 'AUTO' && (
+                <span className="ml-2 text-amber-700">
+                  (Expires in {Math.max(0, Math.round((new Date(liveConfig.overrideExpiresAt).getTime() - Date.now()) / 60000))} mins)
+                </span>
+              )}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {liveConfig?.mistMode && liveConfig.mistMode !== 'AUTO' ? (
+              <button
+                onClick={() => returnMistToAuto(device.deviceId)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Return to AUTO (Sensor Control)
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    setOverrideTarget('mist');
+                    setOverrideMode('FORCE_ON');
+                    setOverrideReason('Manual mist humidification boost');
+                    setOverrideModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-semibold rounded-lg cursor-pointer"
+                >
+                  Force Mist ON
+                </button>
+                <button
+                  onClick={() => {
+                    setOverrideTarget('mist');
+                    setOverrideMode('FORCE_OFF');
+                    setOverrideReason('Manual mist shutdown');
+                    setOverrideModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg cursor-pointer"
+                >
+                  Force Mist OFF
                 </button>
               </>
             )}
@@ -455,7 +522,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-md w-full border border-[#FDC3D1] shadow-xl p-6 space-y-4">
             <h3 className="text-base font-bold text-[#2E1826]">
-              Configure Fan Override: {overrideMode}
+              Configure {overrideTarget === 'fan' ? 'Fan' : 'Mist'} Override: {overrideMode}
             </h3>
             <p className="text-xs text-[#826674]">
               Manual overrides require an expiration window. The ESP32 will automatically return to local AUTO sensor automation once expired.
