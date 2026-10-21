@@ -24,8 +24,8 @@ This guide details the physical hardware wiring, electrical isolation, and activ
 | **DHT11 Sensor** | Pin 4 (GND) | GND | Common GND | Ground plane return |
 | **Dual Relay Module** | VCC | **VIN / 5V** | 5.0V DC | Power supply for relay coils (from 5V buck converter or USB) |
 | **Dual Relay Module** | GND | **GND** | Common GND | Connected to ESP32 ground |
-| **Dual Relay Module** | IN1 (Relay 1 - Fan) | **GPIO 18** | 3.3V Logic | **Active LOW**: LOW (0V) = Fan ON, HIGH (3.3V) = Fan OFF |
-| **Dual Relay Module** | IN2 (Relay 2 - Mist) | **GPIO 19** | 3.3V Logic | **Active LOW**: LOW (0V) = Mist ON, HIGH (3.3V) = Mist OFF |
+| **Dual Relay Module** | IN1 (Relay - Fan) | **GPIO 19** | 3.3V Logic | **Active LOW**: LOW (0V) = Fan ON, HIGH (3.3V) = Fan OFF |
+| **Dual Relay Module** | IN2 (Relay - Mist) | **GPIO 18** | 3.3V Logic | **Active LOW**: LOW (0V) = Mist ON, HIGH (3.3V) = Mist OFF |
 | **Status Indicator** | Built-in LED | **GPIO 2** | 3.3V Logic | Blinks during WiFi search, solid ON when connected |
 | **Relay 1 (Output)** | COM | Shuttle +12V/24V | Fused 12V DC | Switched positive power supply |
 | **Relay 1 (Output)** | NO | Fan Motor (+) | Fused 12V DC | Normally Open contact (circuit closes when fan ON) |

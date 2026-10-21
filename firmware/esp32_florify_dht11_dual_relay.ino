@@ -4,8 +4,8 @@
  * Hardware: ESP32 DevKit + DHT11 Sensor + 2-Channel 5V Optocoupled Relay Module
  * 
  * Actuators:
- *   - Channel 1 (GPIO 18): Shuttle Cabin Cooling Fan
- *   - Channel 2 (GPIO 19): Shuttle Cabin Evaporative Mist / Humidifier Solenoid
+ *   - Channel 1 (GPIO 19): Shuttle Cabin Cooling Fan
+ *   - Channel 2 (GPIO 18): Shuttle Cabin Evaporative Mist / Humidifier Solenoid
  * 
  * Communication: Direct Firebase Firestore REST API v1 over HTTPS (SSL/TLS)
  * Trigger Logic: Active LOW (LOW = Relay Energized / ON, HIGH = Relay Standby / OFF)
@@ -29,8 +29,8 @@
 #define DHTPIN 4              // DHT11 Data pin connected to ESP32 GPIO 4
 #define DHTTYPE DHT11         // DHT 11 Temperature & Humidity Sensor
 
-#define RELAY_FAN_PIN 18      // Relay Channel 1: Cooling Fan
-#define RELAY_MIST_PIN 19     // Relay Channel 2: Misting Solenoid / Humidifier
+#define RELAY_FAN_PIN 19      // Relay: Cooling Fan (switched to GPIO 19)
+#define RELAY_MIST_PIN 18     // Relay: Misting Solenoid / Humidifier (switched to GPIO 18)
 #define STATUS_LED_PIN 2      // Built-in blue LED for connectivity status
 
 // Active LOW Relay Constants (Standard 5V Songle optocoupler board)
@@ -62,12 +62,12 @@ struct DeviceThresholds {
   float tempOnC    = 40.0;    // Fan turns ON if temp >= 40.0 °C
   float tempOffC   = 38.0;    // Fan turns OFF if temp <= 38.0 °C
 
-  bool humEnabled  = true;
-  float humOnRH    = 60.0;    // Mist turns ON if humidity <= 60.0 % RH (too dry)
-  float humOffRH   = 75.0;    // Mist turns OFF if humidity >= 75.0 % RH (satisfied)
+  bool humEnabled  = false;   // Mist automation disabled by default
+  float humOnRH    = 40.0;    // Mist turns ON if humidity <= 40.0 % RH (too dry)
+  float humOffRH   = 55.0;    // Mist turns OFF if humidity >= 55.0 % RH (satisfied)
 
-  String fanMode   = "AUTO";  // "AUTO", "FORCE_ON", "FORCE_OFF"
-  String mistMode  = "AUTO";  // "AUTO", "FORCE_ON", "FORCE_OFF"
+  String fanMode   = "AUTO";      // "AUTO", "FORCE_ON", "FORCE_OFF"
+  String mistMode  = "FORCE_OFF"; // "AUTO", "FORCE_ON", "FORCE_OFF" (Default OFF)
 };
 
 DeviceThresholds currentConfig;
@@ -137,42 +137,47 @@ void connectWiFi() {
 // 6. CLOSED-LOOP LOCAL HYSTERESIS LOGIC
 // ==========================================
 void evaluateActuators(float tempC, float humRH) {
-  // --- A. Fan Control Logic (Relay 1) ---
+  // --- A. Relay: Fan Control Logic (GPIO 19) ---
   if (currentConfig.fanMode == "FORCE_ON") {
     isFanActive = true;
   } else if (currentConfig.fanMode == "FORCE_OFF") {
     isFanActive = false;
   } else if (currentConfig.tempEnabled) {
-    // AUTO hysteresis
+    // AUTO hysteresis for cooling fan
     if (tempC >= currentConfig.tempOnC) {
       isFanActive = true;
     } else if (tempC <= currentConfig.tempOffC) {
       isFanActive = false;
     }
+  } else {
+    isFanActive = false;
   }
 
-  // --- B. Mist / Humidifier Control Logic (Relay 2) ---
+  // --- B. Relay: Mist / Auxiliary Control Logic (GPIO 18) ---
   if (currentConfig.mistMode == "FORCE_ON") {
     isMistActive = true;
   } else if (currentConfig.mistMode == "FORCE_OFF") {
     isMistActive = false;
-  } else if (currentConfig.humEnabled) {
-    // Misting activates when cabin air is too dry or for cooling evaporative boost
+  } else if (currentConfig.mistMode == "AUTO" && currentConfig.humEnabled) {
+    // AUTO hysteresis for mist/humidifier (activates when dry)
     if (humRH <= currentConfig.humOnRH) {
       isMistActive = true;
     } else if (humRH >= currentConfig.humOffRH) {
       isMistActive = false;
     }
+  } else {
+    isMistActive = false;
   }
 
-  // Apply to physical relays (Active LOW trigger)
+  // Apply to physical relays strictly and independently (Active LOW: LOW = ON, HIGH = OFF)
   digitalWrite(RELAY_FAN_PIN, isFanActive ? RELAY_ON : RELAY_OFF);
   digitalWrite(RELAY_MIST_PIN, isMistActive ? RELAY_ON : RELAY_OFF);
 
-  Serial.printf("[Actuators] Fan: %s | Mist: %s | Mode: %s\n",
+  Serial.printf("[Actuators] Relay 1 (Fan): %s | Relay 2 (Mist): %s | FanMode: %s | MistMode: %s\n",
     isFanActive ? "ON (Cooling)" : "OFF (Standby)",
     isMistActive ? "ON (Misting)" : "OFF (Standby)",
-    currentConfig.fanMode.c_str()
+    currentConfig.fanMode.c_str(),
+    currentConfig.mistMode.c_str()
   );
 }
 
@@ -336,11 +341,15 @@ void pollRemoteConfig() {
         if (f.containsKey("fanMode") && f["fanMode"].containsKey("stringValue")) {
           currentConfig.fanMode = f["fanMode"]["stringValue"].as<String>();
         }
+        if (f.containsKey("mistMode") && f["mistMode"].containsKey("stringValue")) {
+          currentConfig.mistMode = f["mistMode"]["stringValue"].as<String>();
+        }
 
-        Serial.printf("[Config Sync] Temp: On=%.1f°C Off=%.1f°C | Hum: On=%.1f%% Off=%.1f%% | Mode=%s\n",
+        Serial.printf("[Config Sync] Temp: On=%.1f°C Off=%.1f°C | Hum: On=%.1f%% Off=%.1f%% | FanMode=%s | MistMode=%s\n",
           currentConfig.tempOnC, currentConfig.tempOffC,
           currentConfig.humOnRH, currentConfig.humOffRH,
-          currentConfig.fanMode.c_str()
+          currentConfig.fanMode.c_str(),
+          currentConfig.mistMode.c_str()
         );
       }
     }

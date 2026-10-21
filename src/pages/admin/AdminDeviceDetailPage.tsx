@@ -44,6 +44,8 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
     allUsers,
     setFanOverride,
     returnToAuto,
+    setMistOverride,
+    returnMistToAuto,
     assignDevice,
     rotateDeviceCredential,
   } = useApp();
@@ -84,6 +86,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
 
   // Override modal state
   const [overrideModalOpen, setOverrideModalOpen] = useState(false);
+  const [overrideTarget, setOverrideTarget] = useState<'FAN' | 'MIST'>('FAN');
   const [firmwareModalOpen, setFirmwareModalOpen] = useState(false);
   const [overrideMode, setOverrideMode] = useState<'FORCE_ON' | 'FORCE_OFF'>('FORCE_ON');
   const [overrideDuration, setOverrideDuration] = useState<number>(30); // 30 mins
@@ -107,7 +110,11 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
 
   const handleApplyOverride = async (e: React.FormEvent) => {
     e.preventDefault();
-    await setFanOverride(device.deviceId, overrideMode, overrideDuration, overrideReason);
+    if (overrideTarget === 'FAN') {
+      await setFanOverride(device.deviceId, overrideMode, overrideDuration, overrideReason);
+    } else {
+      await setMistOverride(device.deviceId, overrideMode, overrideDuration, overrideReason);
+    }
     setOverrideModalOpen(false);
     setOverrideConfirmChecked(false);
   };
@@ -239,9 +246,9 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                     </span>
                   )}
                 </div>
-                Relay 1: Fan (Ch 1)
+                Relay: Fan (Ch 1)
               </span>
-              <span className="text-[10px] font-mono text-emerald-700 font-semibold">GPIO 18</span>
+              <span className="text-[10px] font-mono text-emerald-700 font-semibold">GPIO 19</span>
             </div>
             <div className="mt-2 flex items-baseline gap-2">
               <span
@@ -264,7 +271,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
           </div>
         </div>
 
-        {/* Relay 2: Mist / Humidifier Solenoid */}
+        {/* Relay: Mist / Humidifier Solenoid */}
         <div className={`bg-white p-4 rounded-xl border shadow-xs hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 flex flex-col justify-between ${
           device.latestMistState === 'ON' ? 'border-sky-300 bg-sky-50/20' : 'border-[#FDC3D1]'
         }`}>
@@ -280,9 +287,9 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                     </span>
                   )}
                 </div>
-                Relay 2: Mist (Ch 2)
+                Relay: Mist (Ch 2)
               </span>
-              <span className="text-[10px] font-mono text-sky-700 font-semibold">GPIO 19</span>
+              <span className="text-[10px] font-mono text-sky-700 font-semibold">GPIO 18</span>
             </div>
             <div className="mt-2 flex items-baseline gap-2">
               <span
@@ -331,56 +338,117 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
         </div>
       </div>
 
-      {/* Manual Fan Control Bar */}
-      <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
-              <Power className="h-4 w-4 text-[#C72C5E]" />
-              Manual Fan Override Controls
-            </h3>
-            <p className="text-xs text-[#826674]">
-              Current operating mode:{' '}
-              <strong className="text-[#C72C5E] uppercase">{liveConfig?.fanMode || 'AUTO'}</strong>
-              {liveConfig?.overrideExpiresAt && (
-                <span className="ml-2 text-amber-700">
-                  (Expires in {Math.max(0, Math.round((new Date(liveConfig.overrideExpiresAt).getTime() - Date.now()) / 60000))} mins)
-                </span>
-              )}
-            </p>
-          </div>
+      {/* Manual Actuator Controls: Fan (Relay 1) & Mist (Relay 2) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Manual Fan Control Bar (Relay - GPIO 19) */}
+        <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
+                <Power className="h-4 w-4 text-[#C72C5E]" />
+                Relay: Fan Controls (GPIO 19)
+              </h3>
+              <p className="text-xs text-[#826674]">
+                Operating mode:{' '}
+                <strong className="text-[#C72C5E] uppercase">{liveConfig?.fanMode || 'AUTO'}</strong>
+                {liveConfig?.overrideExpiresAt && (
+                  <span className="ml-2 text-amber-700">
+                    (Expires in {Math.max(0, Math.round((new Date(liveConfig.overrideExpiresAt).getTime() - Date.now()) / 60000))} mins)
+                  </span>
+                )}
+              </p>
+            </div>
 
-          <div className="flex items-center gap-2">
-            {liveConfig?.fanMode !== 'AUTO' ? (
-              <button
-                onClick={() => returnToAuto(device.deviceId)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Return to AUTO (Sensor Control)
-              </button>
-            ) : (
-              <>
+            <div className="flex items-center gap-2">
+              {liveConfig?.fanMode !== 'AUTO' ? (
                 <button
-                  onClick={() => {
-                    setOverrideMode('FORCE_ON');
-                    setOverrideModalOpen(true);
-                  }}
-                  className="px-3 py-1.5 bg-[#FFF7F9] hover:bg-[#FFDBDB] text-[#C72C5E] border border-[#FDC3D1] text-xs font-semibold rounded-lg"
+                  onClick={() => returnToAuto(device.deviceId)}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer"
                 >
-                  Force Fan ON
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Return to AUTO
                 </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => {
+                      setOverrideTarget('FAN');
+                      setOverrideMode('FORCE_ON');
+                      setOverrideModalOpen(true);
+                    }}
+                    className="px-3 py-1.5 bg-[#FFF7F9] hover:bg-[#FFDBDB] text-[#C72C5E] border border-[#FDC3D1] text-xs font-semibold rounded-lg cursor-pointer"
+                  >
+                    Force Fan ON
+                  </button>
+                  <button
+                    onClick={() => {
+                      setOverrideTarget('FAN');
+                      setOverrideMode('FORCE_OFF');
+                      setOverrideModalOpen(true);
+                    }}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg cursor-pointer"
+                  >
+                    Force Fan OFF
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Manual Mist Control Bar (Relay - GPIO 18) */}
+        <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
+                <CloudRain className="h-4 w-4 text-sky-600" />
+                Relay: Mist Controls (GPIO 18)
+              </h3>
+              <p className="text-xs text-[#826674]">
+                Operating mode:{' '}
+                <strong className="text-sky-700 uppercase">{liveConfig?.mistMode || 'FORCE_OFF'}</strong>
+                {liveConfig?.mistOverrideExpiresAt && (
+                  <span className="ml-2 text-amber-700">
+                    (Expires in {Math.max(0, Math.round((new Date(liveConfig.mistOverrideExpiresAt).getTime() - Date.now()) / 60000))} mins)
+                  </span>
+                )}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {liveConfig?.mistMode && liveConfig.mistMode !== 'FORCE_OFF' ? (
                 <button
-                  onClick={() => {
-                    setOverrideMode('FORCE_OFF');
-                    setOverrideModalOpen(true);
-                  }}
-                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg"
+                  onClick={() => returnMistToAuto(device.deviceId)}
+                  className="px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer"
                 >
-                  Force Fan OFF
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Turn Mist OFF
                 </button>
-              </>
-            )}
+              ) : (
+                <>
+                  <button
+                    onClick={() => {
+                      setOverrideTarget('MIST');
+                      setOverrideMode('FORCE_ON');
+                      setOverrideModalOpen(true);
+                    }}
+                    className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-semibold rounded-lg cursor-pointer"
+                  >
+                    Force Mist ON
+                  </button>
+                  <button
+                    onClick={() => {
+                      setOverrideTarget('MIST');
+                      setOverrideMode('FORCE_OFF');
+                      setOverrideModalOpen(true);
+                    }}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-semibold rounded-lg cursor-pointer"
+                  >
+                    Keep Mist OFF
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -455,10 +523,10 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-md w-full border border-[#FDC3D1] shadow-xl p-6 space-y-4">
             <h3 className="text-base font-bold text-[#2E1826]">
-              Configure Fan Override: {overrideMode}
+              Configure {overrideTarget === 'FAN' ? 'Relay 1 (Fan)' : 'Relay 2 (Mist)'} Override: {overrideMode}
             </h3>
             <p className="text-xs text-[#826674]">
-              Manual overrides require an expiration window. The ESP32 will automatically return to local AUTO sensor automation once expired.
+              Manual overrides switch the physical relay immediately. The ESP32 will automatically revert to its standard operating mode once the duration window expires.
             </p>
 
             <form onSubmit={handleApplyOverride} className="space-y-3 text-xs">

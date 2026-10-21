@@ -52,8 +52,11 @@ export interface DeviceConfig {
   humidityOffRH: number;
   activationMode: ActivationMode;
   fanMode: OperatingMode;
+  mistMode?: OperatingMode;
   overrideExpiresAt?: string;
   overrideReason?: string;
+  mistOverrideExpiresAt?: string;
+  mistOverrideReason?: string;
   updatedAt: string;
   updatedBy?: string;
   version: number;

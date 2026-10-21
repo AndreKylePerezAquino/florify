@@ -67,6 +67,8 @@ interface AppContextType {
   updateConfig: (deviceId: string, config: Partial<DeviceConfig>) => Promise<void>;
   setFanOverride: (deviceId: string, mode: 'FORCE_ON' | 'FORCE_OFF', durationMinutes: number, reason: string) => Promise<void>;
   returnToAuto: (deviceId: string) => Promise<void>;
+  setMistOverride: (deviceId: string, mode: 'FORCE_ON' | 'FORCE_OFF', durationMinutes: number, reason: string) => Promise<void>;
+  returnMistToAuto: (deviceId: string) => Promise<void>;
   toggleDeviceStatus: (deviceId: string, active: boolean) => Promise<void>;
   rotateDeviceCredential: (deviceId: string) => Promise<string>;
   acknowledgeAlert: (alertId: string) => Promise<void>;
@@ -579,6 +581,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       humidityOffRH: partialConfig.humidityOffRH ?? ext.humidityOffRH ?? 65.0,
       activationMode: partialConfig.activationMode ?? ext.activationMode ?? 'ANY',
       fanMode: partialConfig.fanMode ?? ext.fanMode ?? 'AUTO',
+      mistMode: partialConfig.mistMode ?? ext.mistMode ?? 'FORCE_OFF',
       version: newVersion,
       updatedAt: new Date().toISOString(),
       updatedBy: currentUser?.uid || 'admin',
@@ -589,6 +592,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     if (partialConfig.overrideReason !== undefined) {
       updated.overrideReason = partialConfig.overrideReason;
+    }
+    if (partialConfig.mistOverrideExpiresAt !== undefined) {
+      updated.mistOverrideExpiresAt = partialConfig.mistOverrideExpiresAt;
+    }
+    if (partialConfig.mistOverrideReason !== undefined) {
+      updated.mistOverrideReason = partialConfig.mistOverrideReason;
     }
 
     try {
@@ -638,6 +647,46 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updatedAt: new Date().toISOString(),
       });
       await logAuditEvent('FAN_RETURN_AUTO', 'DEVICE', deviceId, 'Returned fan actuation to AUTO sensor hysteresis');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `devices/${deviceId}/config/current`);
+    }
+  };
+
+  const setMistOverride = async (
+    deviceId: string,
+    mode: 'FORCE_ON' | 'FORCE_OFF',
+    durationMinutes: number,
+    reason: string
+  ) => {
+    const expiry = new Date(Date.now() + durationMinutes * 60000).toISOString();
+    await updateConfig(deviceId, {
+      mistMode: mode,
+      mistOverrideExpiresAt: expiry,
+      mistOverrideReason: reason,
+    });
+    await logAuditEvent('MIST_OVERRIDE', 'DEVICE', deviceId, `Manual mist override to ${mode} (${durationMinutes}m): ${reason}`);
+  };
+
+  const returnMistToAuto = async (deviceId: string) => {
+    const configRef = doc(db, 'devices', deviceId, 'config', 'current');
+    const existingSnap = await getDoc(configRef);
+    const existing = existingSnap.exists() ? (existingSnap.data() as DeviceConfig) : { version: 1 };
+    const newVersion = (existing.version || 1) + 1;
+
+    try {
+      await updateDoc(configRef, {
+        mistMode: 'AUTO',
+        mistOverrideExpiresAt: deleteField(),
+        mistOverrideReason: deleteField(),
+        version: newVersion,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser?.uid || 'admin',
+      });
+      await updateDoc(doc(db, 'devices', deviceId), {
+        desiredConfigVersion: newVersion,
+        updatedAt: new Date().toISOString(),
+      });
+      await logAuditEvent('MIST_RETURN_AUTO', 'DEVICE', deviceId, 'Returned mist actuation to AUTO sensor hysteresis');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `devices/${deviceId}/config/current`);
     }
@@ -717,6 +766,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateConfig,
         setFanOverride,
         returnToAuto,
+        setMistOverride,
+        returnMistToAuto,
         toggleDeviceStatus,
         rotateDeviceCredential,
         acknowledgeAlert,

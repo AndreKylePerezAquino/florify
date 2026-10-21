@@ -277,7 +277,7 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : 'bg-slate-100 text-slate-700'
                             }`}
-                            title="Relay 1 (GPIO 18): Shuttle Cooling Fan"
+                            title="Relay (GPIO 19): Shuttle Cooling Fan"
                           >
                             Fan: {device.latestFanState}
                           </span>
@@ -287,7 +287,7 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
                                 ? 'bg-sky-100 text-sky-800'
                                 : 'bg-slate-100 text-slate-700'
                             }`}
-                            title="Relay 2 (GPIO 19): Evaporative Mist Solenoid"
+                            title="Relay (GPIO 18): Evaporative Mist Solenoid"
                           >
                             Mist: {device.latestMistState || 'OFF'}
                           </span>
