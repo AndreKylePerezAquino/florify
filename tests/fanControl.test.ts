@@ -12,6 +12,7 @@ describe('Fan Automation & Hysteresis Engine', () => {
     humidityOffRH: 65.0,
     activationMode: 'ANY',
     fanMode: 'AUTO',
+    mistMode: 'AUTO',
     version: 1,
     updatedAt: new Date().toISOString(),
   };
