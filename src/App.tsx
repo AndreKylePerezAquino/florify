@@ -18,6 +18,7 @@ import { DriverDashboardPage } from './pages/driver/DriverDashboardPage';
 import { DriverDeviceDetailPage } from './pages/driver/DriverDeviceDetailPage';
 
 import { ProfilePage } from './pages/shared/ProfilePage';
+import { InteractiveGardenPage } from './pages/shared/InteractiveGardenPage';
 import { NotFoundPage } from './pages/shared/NotFoundPage';
 
 const AppContent: React.FC = () => {
@@ -148,6 +149,9 @@ const AppContent: React.FC = () => {
     // Shared routes
     if (currentPath === '/profile') {
       return <ProfilePage navigate={navigate} />;
+    }
+    if (currentPath === '/garden') {
+      return <InteractiveGardenPage navigate={navigate} />;
     }
 
     return <NotFoundPage navigate={navigate} />;

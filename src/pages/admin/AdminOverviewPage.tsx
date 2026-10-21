@@ -67,13 +67,22 @@ export const AdminOverviewPage: React.FC<AdminOverviewPageProps> = ({ navigate }
           </p>
         </div>
 
-        <button
-          onClick={() => navigate('/admin/devices')}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#FF5C89] hover:bg-[#C72C5E] text-white text-xs font-semibold rounded-xl shadow-xs transition-colors self-start sm:self-auto"
-        >
-          <Plus className="h-4 w-4" />
-          Register New ESP32
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() => navigate('/garden')}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#FDC3D1] hover:bg-[#FFF7F9] text-[#C72C5E] text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
+          >
+            <span>🌸</span>
+            <span>Floral Canvas</span>
+          </button>
+          <button
+            onClick={() => navigate('/admin/devices')}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#FF5C89] hover:bg-[#C72C5E] text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
+          >
+            <Plus className="h-4 w-4" />
+            Register New ESP32
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards Grid */}
