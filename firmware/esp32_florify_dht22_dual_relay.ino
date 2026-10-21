@@ -29,8 +29,8 @@
 #define DHTPIN 4              // DHT11 Data pin connected to ESP32 GPIO 4
 #define DHTTYPE DHT11         // DHT 11 Temperature & Humidity Sensor
 
-#define RELAY_FAN_PIN 19      // Relay: Cooling Fan (GPIO 19)
-#define RELAY_MIST_PIN 18     // Relay: Misting Solenoid / Humidifier (GPIO 18)
+#define RELAY_FAN_PIN 26      // Relay: Cooling Fan (GPIO 26)
+#define RELAY_MIST_PIN 27     // Relay: Misting Solenoid / Humidifier (GPIO 27)
 #define STATUS_LED_PIN 2      // Built-in blue LED for connectivity status
 
 // Active LOW Relay Constants (Standard 5V Songle optocoupler board)

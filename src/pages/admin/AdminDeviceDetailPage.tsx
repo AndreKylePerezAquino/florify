@@ -248,7 +248,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                 </div>
                 Relay: Fan (Ch 1)
               </span>
-              <span className="text-[10px] font-mono text-emerald-700 font-semibold">GPIO 19</span>
+              <span className="text-[10px] font-mono text-emerald-700 font-semibold">GPIO 26</span>
             </div>
             <div className="mt-2 flex items-baseline gap-2">
               <span
@@ -289,7 +289,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                 </div>
                 Relay: Mist (Ch 2)
               </span>
-              <span className="text-[10px] font-mono text-sky-700 font-semibold">GPIO 18</span>
+              <span className="text-[10px] font-mono text-sky-700 font-semibold">GPIO 27</span>
             </div>
             <div className="mt-2 flex items-baseline gap-2">
               <span
@@ -340,13 +340,13 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
 
       {/* Manual Actuator Controls: Fan (Relay 1) & Mist (Relay 2) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Manual Fan Control Bar (Relay - GPIO 19) */}
+        {/* Manual Fan Control Bar (Relay - GPIO 26) */}
         <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
                 <Power className="h-4 w-4 text-[#C72C5E]" />
-                Relay: Fan Controls (GPIO 19)
+                Relay: Fan Controls (GPIO 26)
               </h3>
               <p className="text-xs text-[#826674]">
                 Operating mode:{' '}
@@ -396,13 +396,13 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
           </div>
         </div>
 
-        {/* Manual Mist Control Bar (Relay - GPIO 18) */}
+        {/* Manual Mist Control Bar (Relay - GPIO 27) */}
         <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
                 <CloudRain className="h-4 w-4 text-sky-600" />
-                Relay: Mist Controls (GPIO 18)
+                Relay: Mist Controls (GPIO 27)
               </h3>
               <p className="text-xs text-[#826674]">
                 Operating mode:{' '}

@@ -4,8 +4,8 @@
  * Hardware: ESP32 DevKit + DHT11 Sensor + 2-Channel 5V Optocoupled Relay Module
  * 
  * Actuators:
- *   - Channel 1 (GPIO 19): Shuttle Cabin Cooling Fan
- *   - Channel 2 (GPIO 18): Shuttle Cabin Evaporative Mist / Humidifier Solenoid
+ *   - Cooling Fan:                  GPIO 26 (Safe general-purpose output)
+ *   - Evaporative Mist / Solenoid:  GPIO 27 (Safe general-purpose output)
  * 
  * Communication: Direct Firebase Firestore REST API v1 over HTTPS (SSL/TLS)
  * Trigger Logic: Active LOW (LOW = Relay Energized / ON, HIGH = Relay Standby / OFF)
@@ -29,8 +29,8 @@
 #define DHTPIN 4              // DHT11 Data pin connected to ESP32 GPIO 4
 #define DHTTYPE DHT11         // DHT 11 Temperature & Humidity Sensor
 
-#define RELAY_FAN_PIN 19      // Relay: Cooling Fan (switched to GPIO 19)
-#define RELAY_MIST_PIN 18     // Relay: Misting Solenoid / Humidifier (switched to GPIO 18)
+#define RELAY_FAN_PIN 26      // Relay: Cooling Fan (GPIO 26 - Safe output, no boot flicker)
+#define RELAY_MIST_PIN 27     // Relay: Misting Solenoid / Humidifier (GPIO 27 - Safe output, no boot flicker)
 #define STATUS_LED_PIN 2      // Built-in blue LED for connectivity status
 
 // Active LOW Relay Constants (Standard 5V Songle optocoupler board)
@@ -137,7 +137,7 @@ void connectWiFi() {
 // 6. CLOSED-LOOP LOCAL HYSTERESIS LOGIC
 // ==========================================
 void evaluateActuators(float tempC, float humRH) {
-  // --- A. Relay: Fan Control Logic (GPIO 19) ---
+  // --- A. Relay: Fan Control Logic (GPIO 26) ---
   if (currentConfig.fanMode == "FORCE_ON") {
     isFanActive = true;
   } else if (currentConfig.fanMode == "FORCE_OFF") {
@@ -153,7 +153,7 @@ void evaluateActuators(float tempC, float humRH) {
     isFanActive = false;
   }
 
-  // --- B. Relay: Mist / Auxiliary Control Logic (GPIO 18) ---
+  // --- B. Relay: Mist / Auxiliary Control Logic (GPIO 27) ---
   if (currentConfig.mistMode == "FORCE_ON") {
     isMistActive = true;
   } else if (currentConfig.mistMode == "FORCE_OFF") {
@@ -173,7 +173,7 @@ void evaluateActuators(float tempC, float humRH) {
   digitalWrite(RELAY_FAN_PIN, isFanActive ? RELAY_ON : RELAY_OFF);
   digitalWrite(RELAY_MIST_PIN, isMistActive ? RELAY_ON : RELAY_OFF);
 
-  Serial.printf("[Actuators] Relay 1 (Fan): %s | Relay 2 (Mist): %s | FanMode: %s | MistMode: %s\n",
+  Serial.printf("[Actuators] Fan (GPIO 26): %s | Mist (GPIO 27): %s | FanMode: %s | MistMode: %s\n",
     isFanActive ? "ON (Cooling)" : "OFF (Standby)",
     isMistActive ? "ON (Misting)" : "OFF (Standby)",
     currentConfig.fanMode.c_str(),
@@ -365,7 +365,7 @@ void setup() {
   delay(1000);
   Serial.println("\n==========================================");
   Serial.println("  Florify IoT ESP32 Climate Controller    ");
-  Serial.println("  DHT11 + Dual Relay (Fan & Mist Solenoid)");
+  Serial.println("  Fan (GPIO 26) + Mist (GPIO 27)          ");
   Serial.println("==========================================");
 
   // Initialize Relays in SAFE DE-ENERGIZED state (Active LOW -> write HIGH before pinMode)

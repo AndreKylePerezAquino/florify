@@ -40,8 +40,8 @@ export const FirmwareGuideModal: React.FC<FirmwareGuideModalProps> = ({
  * Hardware: ESP32 DevKit + DHT11 Sensor + 2-Channel 5V Optocoupled Relay Module
  * 
  * Actuators:
- *   - Channel 1 (GPIO 19): Shuttle Cabin Cooling Fan
- *   - Channel 2 (GPIO 18): Shuttle Cabin Evaporative Mist / Humidifier Solenoid
+ *   - Channel 1 (GPIO 26): Shuttle Cabin Cooling Fan
+ *   - Channel 2 (GPIO 27): Shuttle Cabin Evaporative Mist / Humidifier Solenoid
  * 
  * Communication: Direct Firebase Firestore REST API v1 over HTTPS (SSL/TLS)
  * Trigger Logic: Active LOW (LOW = Relay Energized / ON, HIGH = Relay Standby / OFF)
@@ -65,8 +65,8 @@ export const FirmwareGuideModal: React.FC<FirmwareGuideModalProps> = ({
 #define DHTPIN 4              // DHT11 Data pin connected to ESP32 GPIO 4
 #define DHTTYPE DHT11         // DHT 11 Temperature & Humidity Sensor
 
-#define RELAY_FAN_PIN 19      // Relay Channel 1: Cooling Fan (GPIO 19)
-#define RELAY_MIST_PIN 18     // Relay Channel 2: Misting Solenoid / Humidifier (GPIO 18)
+#define RELAY_FAN_PIN 26      // Relay Channel 1: Cooling Fan (GPIO 26)
+#define RELAY_MIST_PIN 27     // Relay Channel 2: Misting Solenoid / Humidifier (GPIO 27)
 #define STATUS_LED_PIN 2      // Built-in blue LED for connectivity status
 
 // Active LOW Relay Constants (Standard 5V Songle optocoupler board)
@@ -626,13 +626,13 @@ void loop() {
                     <tr className="bg-[#FFF7F9]/30">
                       <td className="py-2 px-3 font-semibold text-emerald-700">Relay Channel 1 (Fan)</td>
                       <td className="py-2 px-3 font-mono">IN1</td>
-                      <td className="py-2 px-3 font-mono font-bold">GPIO 19</td>
+                      <td className="py-2 px-3 font-mono font-bold">GPIO 26</td>
                       <td className="py-2 px-3 text-[#826674]">Active LOW signal to engage Shuttle Fan</td>
                     </tr>
                     <tr className="bg-[#FFF7F9]/30">
                       <td className="py-2 px-3 font-semibold text-sky-700">Relay Channel 2 (Mist)</td>
                       <td className="py-2 px-3 font-mono">IN2</td>
-                      <td className="py-2 px-3 font-mono font-bold">GPIO 18</td>
+                      <td className="py-2 px-3 font-mono font-bold">GPIO 27</td>
                       <td className="py-2 px-3 text-[#826674]">Active LOW signal to engage Misting Solenoid</td>
                     </tr>
                     <tr className="bg-[#FFF7F9]/30">
