@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "user": {
+      "title": "User",
+      "description": "User profile with role-based access control and admin approval status",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique Firebase Authentication User ID" },
+        "displayName": { "type": "string", "maxLength": 100, "description": "Display name of the user" },
+        "photoURL": { "type": "string", "maxLength": 500, "description": "User avatar URL" },
+        "email": { "type": "string", "maxLength": 200, "description": "User email address" },
+        "role": { "type": "string", "enum": ["ADMIN", "DRIVER"], "description": "Application authorization role" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED", "SUSPENDED"], "description": "Account approval and lifecycle status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Profile creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Profile last update timestamp" },
+        "approvedAt": { "type": "string", "format": "date-time", "description": "Timestamp when approved by an admin" },
+        "approvedBy": { "type": "string", "description": "UID of the approving administrator" }
+      },
+      "required": ["uid", "email", "role", "status", "createdAt", "updatedAt"]
+    },
+    "device": {
+      "title": "Device",
+      "description": "Registered ESP32 climate monitoring device directly assigned to an active driver",
+      "type": "object",
+      "properties": {
+        "deviceId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 64, "description": "Unique ESP32 device identifier" },
+        "displayName": { "type": "string", "maxLength": 100, "description": "Human readable device name" },
+        "locationLabel": { "type": "string", "maxLength": 100, "description": "Optional location or placement label" },
+        "assignedDriverUid": { "type": "string", "description": "UID of the active assigned driver, or null if unassigned" },
+        "active": { "type": "boolean", "description": "Whether device is enabled and active" },
+        "status": { "type": "string", "enum": ["ONLINE", "OFFLINE", "SENSOR_ERROR", "DISABLED", "UNKNOWN"], "description": "Real-time connectivity and health status" },
+        "firmwareVersion": { "type": "string", "maxLength": 32, "description": "Installed ESP32 firmware version" },
+        "sensorType": { "type": "string", "enum": ["DHT22"], "description": "Hardware sensor type" },
+        "lastSeenAt": { "type": "string", "format": "date-time", "description": "Timestamp of most recent heartbeat or reading" },
+        "lastReadingAt": { "type": "string", "format": "date-time", "description": "Timestamp of most recent valid sensor reading" },
+        "latestTemperatureC": { "type": "number", "description": "Latest reported temperature in degrees Celsius" },
+        "latestHumidityRH": { "type": "number", "description": "Latest reported relative humidity in % RH" },
+        "latestFanState": { "type": "string", "enum": ["ON", "OFF", "UNKNOWN"], "description": "Reported relay/fan physical state" },
+        "reportedMode": { "type": "string", "enum": ["AUTO", "FORCE_ON", "FORCE_OFF"], "description": "Active operating mode on ESP32" },
+        "reportedConfigVersion": { "type": "number", "description": "Configuration version acknowledged by device" },
+        "desiredConfigVersion": { "type": "number", "description": "Target configuration version set by admin" },
+        "lastErrorCode": { "type": "string", "maxLength": 64, "description": "Diagnostic error code if sensor fault" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Device registration timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Device state update timestamp" }
+      },
+      "required": ["deviceId", "displayName", "active", "status", "sensorType", "desiredConfigVersion", "createdAt", "updatedAt"]
+    },
+    "deviceConfig": {
+      "title": "DeviceConfig",
+      "description": "Per-device automation parameters and manual fan override instructions",
+      "type": "object",
+      "properties": {
+        "temperatureEnabled": { "type": "boolean", "description": "Whether temperature triggers fan automation" },
+        "temperatureOnC": { "type": "number", "description": "Temperature threshold to turn fan ON in degrees Celsius" },
+        "temperatureOffC": { "type": "number", "description": "Temperature threshold to turn fan OFF in degrees Celsius (must be < On threshold)" },
+        "humidityEnabled": { "type": "boolean", "description": "Whether humidity triggers fan automation" },
+        "humidityOnRH": { "type": "number", "description": "Humidity threshold to turn fan ON in % RH" },
+        "humidityOffRH": { "type": "number", "description": "Humidity threshold to turn fan OFF in % RH (must be < On threshold)" },
+        "activationMode": { "type": "string", "enum": ["ANY", "ALL"], "description": "Logic condition for triggering fan (ANY = temp OR humidity, ALL = temp AND humidity)" },
+        "fanMode": { "type": "string", "enum": ["AUTO", "FORCE_ON", "FORCE_OFF"], "description": "Desired operating mode" },
+        "overrideExpiresAt": { "type": "string", "format": "date-time", "description": "Timestamp when manual override expires and device reverts to AUTO" },
+        "overrideReason": { "type": "string", "maxLength": 255, "description": "Administrator justification for manual override" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp when configuration was modified" },
+        "updatedBy": { "type": "string", "description": "UID of the admin who updated the configuration" },
+        "version": { "type": "number", "description": "Monotonically increasing configuration revision number" }
+      },
+      "required": ["temperatureEnabled", "temperatureOnC", "temperatureOffC", "humidityEnabled", "humidityOnRH", "humidityOffRH", "activationMode", "fanMode", "updatedAt", "version"]
+    },
+    "deviceReading": {
+      "title": "DeviceReading",
+      "description": "Historical time-series sample of DHT22 temperature, humidity, and fan relay telemetry",
+      "type": "object",
+      "properties": {
+        "temperatureC": { "type": "number", "description": "Sample temperature in degrees Celsius" },
+        "humidityRH": { "type": "number", "description": "Sample relative humidity in % RH" },
+        "fanState": { "type": "string", "enum": ["ON", "OFF", "UNKNOWN"], "description": "Observed fan relay state" },
+        "operatingMode": { "type": "string", "enum": ["AUTO", "FORCE_ON", "FORCE_OFF"], "description": "Active operating mode during sample" },
+        "sensorHealthy": { "type": "boolean", "description": "Whether DHT22 checksum and bus communication succeeded" },
+        "configVersion": { "type": "number", "description": "Active configuration version during sample" },
+        "deviceRecordedAt": { "type": "string", "format": "date-time", "description": "Timestamp recorded by ESP32 internal clock" },
+        "receivedAt": { "type": "string", "format": "date-time", "description": "Authoritative server receipt timestamp" }
+      },
+      "required": ["temperatureC", "humidityRH", "fanState", "operatingMode", "sensorHealthy", "receivedAt"]
+    },
+    "alert": {
+      "title": "Alert",
+      "description": "System event notification for threshold excursion, sensor failure, or connectivity loss",
+      "type": "object",
+      "properties": {
+        "deviceId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 64, "description": "Source ESP32 device ID" },
+        "assignedDriverUidAtCreation": { "type": "string", "description": "UID of assigned driver when alert triggered" },
+        "type": { "type": "string", "enum": ["HIGH_TEMPERATURE", "HIGH_HUMIDITY", "DEVICE_OFFLINE", "SENSOR_FAULT", "OVERRIDE_ACTIVE", "CONFIG_SYNC_ERROR"], "description": "Alert classification" },
+        "severity": { "type": "string", "enum": ["INFO", "WARNING", "CRITICAL"], "description": "Alert severity level" },
+        "message": { "type": "string", "maxLength": 300, "description": "Human-readable alert summary" },
+        "acknowledged": { "type": "boolean", "description": "Whether admin has acknowledged the alert" },
+        "acknowledgedBy": { "type": "string", "description": "UID of admin who acknowledged the alert" },
+        "acknowledgedAt": { "type": "string", "format": "date-time", "description": "Timestamp of acknowledgment" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Authoritative server alert creation timestamp" },
+        "source": { "type": "string", "enum": ["DEVICE", "BACKEND"], "description": "Origin of alert detection" }
+      },
+      "required": ["deviceId", "type", "severity", "message", "acknowledged", "createdAt", "source"]
+    },
+    "auditLog": {
+      "title": "AuditLog",
+      "description": "Immutable administrative audit record for privileged security actions",
+      "type": "object",
+      "properties": {
+        "actorUid": { "type": "string", "description": "UID of the user or system component performing the action" },
+        "actorRole": { "type": "string", "description": "Role of the actor at time of action" },
+        "action": { "type": "string", "maxLength": 64, "description": "Audit event type (e.g. USER_APPROVED, DEVICE_ASSIGNED, FAN_OVERRIDE)" },
+        "targetType": { "type": "string", "maxLength": 64, "description": "Type of resource targeted (e.g. DEVICE, USER, CONFIG)" },
+        "targetId": { "type": "string", "maxLength": 128, "description": "Identifier of the target entity" },
+        "details": { "type": "string", "maxLength": 1000, "description": "Contextual details or JSON metadata about the change" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Authoritative server timestamp when logged" }
+      },
+      "required": ["actorUid", "actorRole", "action", "targetType", "targetId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "user",
+      "description": "User account profiles and approval states"
+    },
+    "/devices/{deviceId}": {
+      "schema": "device",
+      "description": "Registered ESP32 climate monitors and live summary states"
+    },
+    "/devices/{deviceId}/config/current": {
+      "schema": "deviceConfig",
+      "description": "Current active climate automation thresholds and fan modes"
+    },
+    "/devices/{deviceId}/readings/{readingId}": {
+      "schema": "deviceReading",
+      "description": "Time-series DHT22 readings and relay status records"
+    },
+    "/alerts/{alertId}": {
+      "schema": "alert",
+      "description": "System alerts and threshold notifications"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "auditLog",
+      "description": "Immutable security and administrative audit trail"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Remix Florify",
+  "description": "Real-time IoT temperature and humidity monitoring with automated fan control, driver assignment, and DHT11 telemetry for shuttles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

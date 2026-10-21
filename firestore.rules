@@ -1,0 +1,164 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.firebase.sign_in_provider == 'google.com' ||
+        request.auth.token.firebase.sign_in_provider == 'password'
+      );
+    }
+
+    function hasAdminBeenClaimed() {
+      return exists(/databases/$(database)/documents/system/adminClaim);
+    }
+
+    function isBootstrapAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email in ['andrekyle26o@gmail.com', 'newroskoto@gmail.com', 'admin@florify.internal'] ||
+        (hasAdminBeenClaimed() && get(/databases/$(database)/documents/system/adminClaim).data.claimedBy == request.auth.uid)
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        isBootstrapAdmin() ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN' &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'APPROVED'
+        )
+      );
+    }
+
+    function isAssignedDriver(deviceId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/devices/$(deviceId)) &&
+        get(/databases/$(database)/documents/devices/$(deviceId)).data.assignedDriverUid == request.auth.uid;
+    }
+
+    function isValidUserCreate(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'status', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'email', 'role', 'status', 'createdAt', 'updatedAt', 'approvedAt', 'approvedBy']) &&
+             data.uid == request.auth.uid &&
+             data.email is string && data.email.size() <= 200 &&
+             (
+               (!hasAdminBeenClaimed() || request.auth.token.email in ['andrekyle26o@gmail.com', 'newroskoto@gmail.com', 'admin@florify.internal'])
+                 ? (data.role in ['ADMIN', 'DRIVER'] && data.status in ['APPROVED', 'PENDING'])
+                 : (data.role == 'DRIVER' && data.status == 'PENDING')
+             );
+    }
+
+    function isValidTelemetryPatch() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'latestTemperatureC',
+        'latestHumidityRH',
+        'latestFanState',
+        'latestMistState',
+        'status',
+        'lastReadingAt',
+        'lastSeenAt',
+        'reportedMode',
+        'reportedConfigVersion',
+        'firmwareVersion',
+        'lastErrorCode',
+        'updatedAt'
+      ]);
+    }
+
+    // User collection
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidUserCreate(request.resource.data);
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // System collection (one-time admin claim document)
+    match /system/{docId} {
+      allow get: if docId == 'adminClaim';
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && docId == 'adminClaim' &&
+                    (!hasAdminBeenClaimed() || isAdmin()) &&
+                    request.resource.data.claimedBy == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // Devices collection
+    match /devices/{deviceId} {
+      // Allows ESP32 (direct REST) or authenticated users to fetch device info
+      allow get: if isValidId(deviceId) && (
+        !isSignedIn() || isAdmin() || resource.data.assignedDriverUid == request.auth.uid
+      );
+      allow list: if isSignedIn() && (isAdmin() || resource.data.assignedDriverUid == request.auth.uid);
+      allow create: if isAdmin() && isValidId(deviceId);
+      // Allows Admin full updates OR ESP32 devices to patch live telemetry metrics
+      allow update: if isValidId(deviceId) && (
+        isAdmin() || isValidTelemetryPatch()
+      );
+      allow delete: if false;
+
+      // Device configuration subcollection
+      match /config/{configDoc} {
+        // Allows ESP32 to poll remote config parameters via REST GET
+        allow get: if isValidId(deviceId);
+        allow list: if isAdmin() && isValidId(deviceId);
+        allow create, update: if isAdmin() && isValidId(deviceId);
+        allow delete: if false;
+      }
+
+      // Device readings subcollection
+      match /readings/{readingId} {
+        allow get, list: if isSignedIn() && isValidId(deviceId) && (isAdmin() || isAssignedDriver(deviceId));
+        // Allows ESP32 to append historical time-series samples
+        allow create: if isValidId(deviceId) && (
+          isAdmin() ||
+          request.resource.data.keys().hasAll(['temperatureC', 'humidityRH', 'fanState'])
+        );
+        allow update, delete: if false;
+      }
+    }
+
+    // Alerts collection
+    match /alerts/{alertId} {
+      allow get: if isSignedIn() && isValidId(alertId) && (
+        isAdmin() ||
+        (resource.data.deviceId is string && isAssignedDriver(resource.data.deviceId))
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        (resource.data.deviceId is string && isAssignedDriver(resource.data.deviceId))
+      );
+      allow update: if isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['acknowledged', 'acknowledgedBy', 'acknowledgedAt']);
+      allow create: if isSignedIn() || isAdmin();
+      allow delete: if false;
+    }
+
+    // Audit logs collection
+    match /auditLogs/{logId} {
+      allow get, list: if isSignedIn() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN')
+      );
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+  }
+}

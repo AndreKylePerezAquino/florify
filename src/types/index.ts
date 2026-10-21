@@ -1,0 +1,135 @@
+export type UserRole = 'ADMIN' | 'DRIVER';
+export type UserStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+
+export interface UserProfile {
+  uid: string;
+  displayName: string;
+  photoURL?: string;
+  email: string;
+  role: UserRole;
+  status: UserStatus;
+  createdAt: string;
+  updatedAt: string;
+  approvedAt?: string;
+  approvedBy?: string;
+}
+
+export type DeviceStatus = 'ONLINE' | 'OFFLINE' | 'SENSOR_ERROR' | 'DISABLED' | 'UNKNOWN';
+export type FanState = 'ON' | 'OFF' | 'UNKNOWN';
+export type MistState = 'ON' | 'OFF' | 'UNKNOWN';
+export type OperatingMode = 'AUTO' | 'FORCE_ON' | 'FORCE_OFF';
+export type ActivationMode = 'ANY' | 'ALL';
+
+export interface Device {
+  deviceId: string;
+  displayName: string;
+  locationLabel?: string;
+  assignedDriverUid: string | null;
+  active: boolean;
+  status: DeviceStatus;
+  firmwareVersion: string;
+  sensorType: 'DHT11' | 'DHT22';
+  lastSeenAt?: string;
+  lastReadingAt?: string;
+  latestTemperatureC?: number;
+  latestHumidityRH?: number;
+  latestFanState: FanState;
+  latestMistState?: MistState;
+  reportedMode: OperatingMode;
+  reportedConfigVersion: number;
+  desiredConfigVersion: number;
+  lastErrorCode?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DeviceConfig {
+  temperatureEnabled: boolean;
+  temperatureOnC: number;
+  temperatureOffC: number;
+  humidityEnabled: boolean;
+  humidityOnRH: number;
+  humidityOffRH: number;
+  activationMode: ActivationMode;
+  fanMode: OperatingMode;
+  overrideExpiresAt?: string;
+  overrideReason?: string;
+  updatedAt: string;
+  updatedBy?: string;
+  version: number;
+}
+
+export interface DeviceReading {
+  id?: string;
+  temperatureC: number;
+  humidityRH: number;
+  fanState: FanState;
+  mistState?: MistState;
+  operatingMode: OperatingMode;
+  sensorHealthy: boolean;
+  configVersion: number;
+  deviceRecordedAt: string;
+  receivedAt: string;
+}
+
+export type AlertType =
+  | 'HIGH_TEMPERATURE'
+  | 'HIGH_HUMIDITY'
+  | 'DEVICE_OFFLINE'
+  | 'SENSOR_FAULT'
+  | 'OVERRIDE_ACTIVE'
+  | 'CONFIG_SYNC_ERROR';
+
+export type AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
+
+export interface Alert {
+  id: string;
+  deviceId: string;
+  assignedDriverUidAtCreation?: string | null;
+  type: AlertType;
+  severity: AlertSeverity;
+  message: string;
+  acknowledged: boolean;
+  acknowledgedBy?: string;
+  acknowledgedAt?: string;
+  createdAt: string;
+  source: 'DEVICE' | 'BACKEND';
+}
+
+export interface AuditLog {
+  id: string;
+  actorUid: string;
+  actorRole: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  details: string;
+  createdAt: string;
+}
+
+export interface DeviceHeartbeatRequest {
+  deviceId: string;
+  timestamp: string;
+  firmwareVersion?: string;
+  freeHeap?: number;
+  wifiRssi?: number;
+}
+
+export interface DeviceReadingsRequest {
+  deviceId: string;
+  readings: Array<{
+    temperatureC: number;
+    humidityRH: number;
+    fanState: FanState;
+    operatingMode: OperatingMode;
+    sensorHealthy: boolean;
+    configVersion: number;
+    deviceRecordedAt: string;
+  }>;
+}
+
+export interface DeviceConfigAckRequest {
+  deviceId: string;
+  appliedVersion: number;
+  timestamp: string;
+}

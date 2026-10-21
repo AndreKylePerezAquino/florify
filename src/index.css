@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bubblegum-pink: #FF5C89;
+  --color-bubblegum-tint: #FB8CAC;
+  --color-baby-pink: #FDA8BF;
+  --color-pastel-pink: #FDC3D1;
+  --color-soft-blush: #FFDBDB;
+
+  --color-pink-primary: #FF5C89;
+  --color-pink-deep: #C72C5E;
+  --color-pink-blush: #FFF5F7;
+  --color-pink-light: #FFDBDB;
+  --color-pink-pastel: #FDC3D1;
+  --color-pink-dusty: #FB8CAC;
+  --color-plum-dark: #2E1826;
+  --color-mauve-muted: #826674;
+  --color-pink-border: #FDC3D1;
+
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #FFF7F9;
+  color: #2E1826;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Custom scrollbars with user's pink palette */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #FFDBDB;
+}
+::-webkit-scrollbar-thumb {
+  background: #FDA8BF;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #FF5C89;
+}
+
+/* Florify Hardware-Accelerated Micro-Animations */
+@keyframes fan-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes radar-ping {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.85;
+  }
+  65% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+@keyframes soft-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(225, 29, 72, 0);
+  }
+}
+
+@keyframes telemetry-wave {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-fan-spin {
+  animation: fan-spin 1.1s linear infinite;
+  transform-origin: center;
+}
+
+.animate-radar-ping {
+  animation: radar-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.animate-warning-glow {
+  animation: soft-pulse-glow 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fan-spin,
+  .animate-radar-ping,
+  .animate-warning-glow,
+  .animate-spin,
+  .animate-pulse,
+  .animate-ping {
+    animation: none !important;
+    transition: none !important;
+  }
+}
