@@ -31,20 +31,11 @@
 
 #define RELAY_FAN_PIN 18      // Relay Channel 1: Cooling Fan
 #define RELAY_MIST_PIN 19     // Relay Channel 2: Misting Solenoid / Humidifier
-#define RELAY_FAN_FB_PIN 32   // Feedback pin for Fan relay
-#define RELAY_MIST_FB_PIN 33  // Feedback pin for Mist relay
 #define STATUS_LED_PIN 2      // Built-in blue LED for connectivity status
 
-// NC Relay Constants: Energized = OPEN, De-energized = CLOSED (Fan ON)
-// Since NC: Relay OFF (HIGH) -> Fan ON | Relay ON (LOW) -> Fan OFF
-#define RELAY_ON_PHYSICAL  LOW
-#define RELAY_OFF_PHYSICAL HIGH
-
-#define FAN_LOGIC_ON  HIGH
-#define FAN_LOGIC_OFF LOW
-
-#define MIST_LOGIC_ON  HIGH
-#define MIST_LOGIC_OFF LOW
+// Active LOW Relay Constants (Standard 5V Songle optocoupler board)
+#define RELAY_ON  LOW
+#define RELAY_OFF HIGH
 
 // ==========================================
 // 2. NETWORK & FIREBASE CREDENTIALS
@@ -152,6 +143,7 @@ void evaluateActuators(float tempC, float humRH) {
   } else if (currentConfig.fanMode == "FORCE_OFF") {
     isFanActive = false;
   } else if (currentConfig.tempEnabled) {
+    // AUTO hysteresis
     if (tempC >= currentConfig.tempOnC) {
       isFanActive = true;
     } else if (tempC <= currentConfig.tempOffC) {
@@ -165,6 +157,7 @@ void evaluateActuators(float tempC, float humRH) {
   } else if (currentConfig.mistMode == "FORCE_OFF") {
     isMistActive = false;
   } else if (currentConfig.humEnabled) {
+    // Misting activates when cabin air is too dry or for cooling evaporative boost
     if (humRH <= currentConfig.humOnRH) {
       isMistActive = true;
     } else if (humRH >= currentConfig.humOffRH) {
@@ -172,19 +165,14 @@ void evaluateActuators(float tempC, float humRH) {
     }
   }
 
-  // Apply to physical relays (Active LOW trigger, NC logic inverted)
-  digitalWrite(RELAY_FAN_PIN, isFanActive ? FAN_LOGIC_ON : FAN_LOGIC_OFF);
-  digitalWrite(RELAY_MIST_PIN, isMistActive ? MIST_LOGIC_ON : MIST_LOGIC_OFF);
+  // Apply to physical relays (Active LOW trigger)
+  digitalWrite(RELAY_FAN_PIN, isFanActive ? RELAY_ON : RELAY_OFF);
+  digitalWrite(RELAY_MIST_PIN, isMistActive ? RELAY_ON : RELAY_OFF);
 
-  // Monitor actual relay state via feedback pins
-  bool fanFB = (digitalRead(RELAY_FAN_FB_PIN) == LOW); // Assuming Low=On
-  bool mistFB = (digitalRead(RELAY_MIST_FB_PIN) == LOW);
-
-  Serial.printf("[Actuators] Command Fan: %s | Mist: %s | Feedback Fan: %s | Mist: %s\n",
-    isFanActive ? "ON" : "OFF",
-    isMistActive ? "ON" : "OFF",
-    fanFB ? "ON" : "OFF",
-    mistFB ? "ON" : "OFF"
+  Serial.printf("[Actuators] Fan: %s | Mist: %s | Mode: %s\n",
+    isFanActive ? "ON (Cooling)" : "OFF (Standby)",
+    isMistActive ? "ON (Misting)" : "OFF (Standby)",
+    currentConfig.fanMode.c_str()
   );
 }
 
@@ -372,13 +360,10 @@ void setup() {
   Serial.println("==========================================");
 
   // Initialize Relays in SAFE DE-ENERGIZED state (Active LOW -> write HIGH before pinMode)
-  digitalWrite(RELAY_FAN_PIN, RELAY_OFF_PHYSICAL);
-  digitalWrite(RELAY_MIST_PIN, RELAY_OFF_PHYSICAL);
+  digitalWrite(RELAY_FAN_PIN, RELAY_OFF);
+  digitalWrite(RELAY_MIST_PIN, RELAY_OFF);
   pinMode(RELAY_FAN_PIN, OUTPUT);
   pinMode(RELAY_MIST_PIN, OUTPUT);
-
-  pinMode(RELAY_FAN_FB_PIN, INPUT_PULLUP);
-  pinMode(RELAY_MIST_FB_PIN, INPUT_PULLUP);
 
   pinMode(STATUS_LED_PIN, OUTPUT);
   digitalWrite(STATUS_LED_PIN, LOW);
