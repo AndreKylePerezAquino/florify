@@ -568,16 +568,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const existingSnap = await getDoc(configRef);
     const existing = existingSnap.exists() ? (existingSnap.data() as DeviceConfig) : { version: 1 };
 
-    const newVersion = (existing.version || 1) + 1;
+    const ext = existing as any;
+    const newVersion = (ext.version || 1) + 1;
     const updated: Record<string, any> = {
-      temperatureEnabled: partialConfig.temperatureEnabled ?? true,
-      temperatureOnC: partialConfig.temperatureOnC ?? 40.0,
-      temperatureOffC: partialConfig.temperatureOffC ?? 38.0,
-      humidityEnabled: partialConfig.humidityEnabled ?? true,
-      humidityOnRH: partialConfig.humidityOnRH ?? 75.0,
-      humidityOffRH: partialConfig.humidityOffRH ?? 65.0,
-      activationMode: partialConfig.activationMode ?? 'ANY',
-      fanMode: partialConfig.fanMode ?? 'AUTO',
+      temperatureEnabled: partialConfig.temperatureEnabled ?? ext.temperatureEnabled ?? true,
+      temperatureOnC: partialConfig.temperatureOnC ?? ext.temperatureOnC ?? 40.0,
+      temperatureOffC: partialConfig.temperatureOffC ?? ext.temperatureOffC ?? 38.0,
+      humidityEnabled: partialConfig.humidityEnabled ?? ext.humidityEnabled ?? true,
+      humidityOnRH: partialConfig.humidityOnRH ?? ext.humidityOnRH ?? 75.0,
+      humidityOffRH: partialConfig.humidityOffRH ?? ext.humidityOffRH ?? 65.0,
+      activationMode: partialConfig.activationMode ?? ext.activationMode ?? 'ANY',
+      fanMode: partialConfig.fanMode ?? ext.fanMode ?? 'AUTO',
       version: newVersion,
       updatedAt: new Date().toISOString(),
       updatedBy: currentUser?.uid || 'admin',

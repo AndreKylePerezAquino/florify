@@ -47,7 +47,7 @@ const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 // Florify Firebase Firestore Configuration
 const char* FIREBASE_PROJECT_ID  = "florify-c5dea";
 const char* FIREBASE_DATABASE_ID = "(default)";
-const char* FIREBASE_API_KEY     = "AIzaSyCTt97yEB5-AGHTv5x423fCdQVBw03lUFc";
+const char* FIREBASE_API_KEY     = "AIzaSyBHQc-tMbFYHlvpsds7oTA635Yebr7k0_o";
 
 // Unique Device ID registered in Florify dashboard
 const char* DEVICE_ID = "ESP32-FLORIFY-01";
@@ -305,17 +305,33 @@ void pollRemoteConfig() {
       if (!err && doc.containsKey("fields")) {
         JsonObject f = doc["fields"];
 
-        if (f.containsKey("temperatureOnC") && f["temperatureOnC"].containsKey("doubleValue")) {
-          currentConfig.tempOnC = f["temperatureOnC"]["doubleValue"];
+        if (f.containsKey("temperatureOnC")) {
+          if (f["temperatureOnC"].containsKey("doubleValue")) {
+            currentConfig.tempOnC = f["temperatureOnC"]["doubleValue"].as<float>();
+          } else if (f["temperatureOnC"].containsKey("integerValue")) {
+            currentConfig.tempOnC = String(f["temperatureOnC"]["integerValue"].as<const char*>()).toFloat();
+          }
         }
-        if (f.containsKey("temperatureOffC") && f["temperatureOffC"].containsKey("doubleValue")) {
-          currentConfig.tempOffC = f["temperatureOffC"]["doubleValue"];
+        if (f.containsKey("temperatureOffC")) {
+          if (f["temperatureOffC"].containsKey("doubleValue")) {
+            currentConfig.tempOffC = f["temperatureOffC"]["doubleValue"].as<float>();
+          } else if (f["temperatureOffC"].containsKey("integerValue")) {
+            currentConfig.tempOffC = String(f["temperatureOffC"]["integerValue"].as<const char*>()).toFloat();
+          }
         }
-        if (f.containsKey("humidityOnRH") && f["humidityOnRH"].containsKey("doubleValue")) {
-          currentConfig.humOnRH = f["humidityOnRH"]["doubleValue"];
+        if (f.containsKey("humidityOnRH")) {
+          if (f["humidityOnRH"].containsKey("doubleValue")) {
+            currentConfig.humOnRH = f["humidityOnRH"]["doubleValue"].as<float>();
+          } else if (f["humidityOnRH"].containsKey("integerValue")) {
+            currentConfig.humOnRH = String(f["humidityOnRH"]["integerValue"].as<const char*>()).toFloat();
+          }
         }
-        if (f.containsKey("humidityOffRH") && f["humidityOffRH"].containsKey("doubleValue")) {
-          currentConfig.humOffRH = f["humidityOffRH"]["doubleValue"];
+        if (f.containsKey("humidityOffRH")) {
+          if (f["humidityOffRH"].containsKey("doubleValue")) {
+            currentConfig.humOffRH = f["humidityOffRH"]["doubleValue"].as<float>();
+          } else if (f["humidityOffRH"].containsKey("integerValue")) {
+            currentConfig.humOffRH = String(f["humidityOffRH"]["integerValue"].as<const char*>()).toFloat();
+          }
         }
         if (f.containsKey("fanMode") && f["fanMode"].containsKey("stringValue")) {
           currentConfig.fanMode = f["fanMode"]["stringValue"].as<String>();

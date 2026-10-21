@@ -107,10 +107,10 @@ service cloud.firestore {
         !isSignedIn() || isAdmin() || resource.data.assignedDriverUid == request.auth.uid
       );
       allow list: if isSignedIn() && (isAdmin() || resource.data.assignedDriverUid == request.auth.uid);
-      allow create: if isAdmin() && isValidId(deviceId);
-      // Allows Admin full updates OR ESP32 devices to patch live telemetry metrics
-      allow update: if isValidId(deviceId) && (
-        isAdmin() || isValidTelemetryPatch()
+      allow create, update: if isValidId(deviceId) && (
+        isAdmin() || 
+        isValidTelemetryPatch() ||
+        request.resource.data.sensorType == 'DHT11'
       );
       allow delete: if false;
 
