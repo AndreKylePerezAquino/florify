@@ -22,7 +22,6 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
   const {
-    login,
     loginWithEmail,
     signupWithEmail,
     resetPassword,
@@ -84,19 +83,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
     });
   }, [mode]);
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setError(null);
-    setSuccessMessage(null);
-    try {
-      await login();
-    } catch (err: any) {
-      console.error(err);
-      setError(formatAuthError(err));
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -205,46 +192,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
           </div>
         </div>
 
-        {/* Primary Recommended Google Sign-In */}
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-[#FDC3D1] bg-white text-[#2E1826] text-xs sm:text-sm font-semibold hover:bg-[#FFF7F9] hover:border-[#FF5C89] focus:outline-none focus:ring-2 focus:ring-[#FF5C89]/30 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
-          >
-            <svg className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.35 24 12 24z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.17 0 9.98 0 12s.45 3.83 1.25 5.42l4.03-3.15z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-              />
-            </svg>
-            <span>{loading ? 'Connecting...' : 'Continue with Google (Instant)'}</span>
-          </button>
 
-          <div className="relative my-3">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[#FDC3D1]" />
-            </div>
-            <div className="relative flex justify-center text-[11px]">
-              <span className="bg-white px-3 text-[#826674] font-medium">
-                or sign in with email
-              </span>
-            </div>
-          </div>
-        </div>
 
         {/* Auth Mode Tabs */}
         <div className="grid grid-cols-2 p-1 bg-[#FFF7F9] rounded-xl border border-[#FDC3D1]">
@@ -290,21 +238,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
               <div className="flex-1 font-medium leading-relaxed">{error}</div>
             </div>
 
-            {error.includes('Email/Password') && (
-              <div className="pt-2 border-t border-rose-200 flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  disabled={loading}
-                  className="w-full py-2 px-3 rounded-lg bg-[#FF5C89] hover:bg-[#FF4275] text-white text-xs font-semibold shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
-                >
-                  <span>Sign In with Google Instead (Already Enabled)</span>
-                </button>
-                <p className="text-[11px] text-rose-700 leading-normal">
-                  To enable email login, open your Firebase Console &rarr; Authentication &rarr; Sign-in method, click "Email/Password" and toggle it on.
-                </p>
-              </div>
-            )}
+
 
             {error.includes('Invalid email or password') && mode === 'signin' && signInEmail && (
               <div className="pt-2 border-t border-rose-200 flex flex-col gap-2">

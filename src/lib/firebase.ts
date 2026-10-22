@@ -1,8 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
-  GoogleAuthProvider,
-  signInWithPopup,
   signOut as firebaseSignOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -190,8 +188,6 @@ export const db = activeFirebaseConfig.firestoreDatabaseId && activeFirebaseConf
   : getFirestore(app);
 
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
   const errInfo: FirestoreErrorInfo = {
@@ -228,10 +224,6 @@ export async function testConnection(): Promise<boolean> {
   }
 }
 
-export async function signInWithGoogle() {
-  return signInWithPopup(auth, googleProvider);
-}
-
 export async function signInWithEmail(email: string, password: string) {
   return signInWithEmailAndPassword(auth, email.trim(), password);
 }
@@ -262,7 +254,7 @@ export function formatAuthError(err: any): string {
   const message = err.message || '';
 
   if (code === 'auth/operation-not-allowed' || message.includes('auth/operation-not-allowed') || message.includes('operation-not-allowed')) {
-    return 'Email/Password sign-up is not enabled in your Firebase Authentication console. You can sign in immediately using Google, or enable the Email/Password provider under Authentication > Sign-in method in your Firebase console.';
+    return 'Email/Password sign-up is not enabled in your Firebase Authentication console. Please enable the Email/Password provider under Authentication > Sign-in method in your Firebase console.';
   }
 
   switch (code) {
@@ -281,8 +273,6 @@ export function formatAuthError(err: any): string {
       return 'This account has been disabled. Please contact an administrator.';
     case 'auth/too-many-requests':
       return 'Too many unsuccessful attempts. Access temporarily blocked; please try again later or reset password.';
-    case 'auth/popup-closed-by-user':
-      return 'Google sign-in popup was closed before completion.';
     default:
       return err.message || 'Authentication failed. Please try again.';
   }

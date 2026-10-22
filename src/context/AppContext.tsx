@@ -16,7 +16,6 @@ import {
 import {
   auth,
   db,
-  signInWithGoogle,
   signInWithEmail,
   registerWithEmail,
   sendPasswordReset,
@@ -48,7 +47,6 @@ interface AppContextType {
   pendingUsersCount: number;
   activeAlertsCount: number;
   devicesWithFansOnCount: number;
-  login: () => Promise<void>;
   loginWithEmail: (email: string, password: string) => Promise<void>;
   signupWithEmail: (
     email: string,
@@ -339,16 +337,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       unsubAudit();
     };
   }, [currentUser, userProfile]);
-
-  // Auth actions
-  const login = async () => {
-    try {
-      await signInWithGoogle();
-    } catch (error) {
-      console.error('Google Sign-In failed:', error);
-      throw error;
-    }
-  };
 
   const loginWithEmail = async (identifier: string, password: string) => {
     const rawId = identifier.trim();
@@ -753,7 +741,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         pendingUsersCount,
         activeAlertsCount,
         devicesWithFansOnCount,
-        login,
         loginWithEmail,
         signupWithEmail,
         resetPassword,
