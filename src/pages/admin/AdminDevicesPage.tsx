@@ -12,10 +12,10 @@ import {
   AlertTriangle,
   X,
   ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
-import { FirmwareGuideModal } from '../../components/modals/FirmwareGuideModal';
 import { DeviceStatus } from '../../types';
 
 interface AdminDevicesPageProps {
@@ -27,6 +27,7 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
     devices,
     allUsers,
     registerDevice,
+    removeDevice,
     assignDevice,
     toggleDeviceStatus,
     rotateDeviceCredential,
@@ -35,8 +36,7 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | DeviceStatus>('ALL');
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
-  const [firmwareModalOpen, setFirmwareModalOpen] = useState(false);
-  const [selectedFirmwareDeviceId, setSelectedFirmwareDeviceId] = useState('ESP32-FLORIFY-01');
+  const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
 
   // New device form state
   const [newDeviceId, setNewDeviceId] = useState('');
@@ -75,7 +75,6 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
       return;
     }
 
-    // Check duplicate
     if (devices.some((d) => d.deviceId.toUpperCase() === newDeviceId.trim().toUpperCase())) {
       setRegisterError('A device with this ID already exists.');
       return;
@@ -110,28 +109,23 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
     setRotatedCredential({ id: deviceId, key: secret });
   };
 
+  const handleDeleteDevice = async (deviceId: string) => {
+    await removeDevice(deviceId);
+    setDeletingDeviceId(null);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-[#2E1826]">ESP32 Device Management</h1>
+          <h1 className="text-xl font-bold tracking-tight text-[#2E1826]">Climate Monitors</h1>
           <p className="text-xs text-[#826674] mt-0.5">
-            Register hardware nodes, assign dedicated drivers (1:1 ratio), and manage device access credentials.
+            Register climate monitors and manage climate monitors.
           </p>
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          <button
-            onClick={() => {
-              setSelectedFirmwareDeviceId(devices[0]?.deviceId || 'ESP32-FLORIFY-01');
-              setFirmwareModalOpen(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#FFF7F9] hover:bg-[#FFDBDB] border border-[#FDC3D1] text-[#C72C5E] text-xs font-semibold rounded-xl shadow-xs transition-all active:scale-[0.98] cursor-pointer"
-          >
-            <Cpu className="h-4 w-4" />
-            ESP32 Code & Wiring
-          </button>
           <button
             onClick={() => {
               handleGenerateId();
@@ -140,7 +134,7 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
             className="inline-flex items-center gap-2 px-4 py-2 bg-[#FF5C89] hover:bg-[#C72C5E] text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
           >
             <Plus className="h-4 w-4" />
-            Register Device
+            Register Climate Monitor
           </button>
         </div>
       </div>
@@ -160,7 +154,7 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
 
         {/* Status Filters */}
         <div className="flex items-center gap-1 overflow-x-auto text-xs">
-          {(['ALL', 'ONLINE', 'OFFLINE', 'SENSOR_ERROR', 'DISABLED'] as const).map((st) => (
+          {(['ALL', 'SENSOR_ERROR', 'DISABLED'] as const).map((st) => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
@@ -186,22 +180,20 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4">Assigned Driver</th>
                 <th className="py-3 px-4">Latest Climate</th>
-                <th className="py-3 px-4">Relay Channels</th>
-                <th className="py-3 px-4">Config Sync</th>
+                <th className="py-3 px-4">Cooling & Humidity</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#FDC3D1]">
               {filteredDevices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-[#826674]">
-                    No devices match the selected filters.
+                  <td colSpan={6} className="py-8 text-center text-[#826674]">
+                    No climate monitors match the selected filters.
                   </td>
                 </tr>
               ) : (
                 filteredDevices.map((device) => {
                   const assignedDriver = allUsers.find((u) => u.uid === device.assignedDriverUid);
-                  const isSync = device.reportedConfigVersion === device.desiredConfigVersion;
 
                   return (
                     <tr key={device.deviceId} className="hover:bg-[#FFF7F9]/30 transition-colors">
@@ -268,7 +260,7 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
                         )}
                       </td>
 
-                      {/* Relay Channels (Fan & Mist) */}
+                      {/* Cooling & Humidity */}
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-1.5">
                           <span
@@ -277,9 +269,9 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : 'bg-slate-100 text-slate-700'
                             }`}
-                            title="Relay: Shuttle Cooling Fan (GPIO 26)"
+                            title="Cooling Relay (GPIO 26)"
                           >
-                            Fan: {device.latestFanState}
+                            Cooling: {device.latestFanState}
                           </span>
                           <span
                             className={`font-mono font-semibold px-2 py-0.5 rounded text-[11px] ${
@@ -287,37 +279,16 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
                                 ? 'bg-sky-100 text-sky-800'
                                 : 'bg-slate-100 text-slate-700'
                             }`}
-                            title="Relay: Evaporative Mist Solenoid (GPIO 27)"
+                            title="Humidity Relay (GPIO 27)"
                           >
-                            Mist: {device.latestMistState || 'OFF'}
+                            Humidity: {device.latestMistState || 'OFF'}
                           </span>
                         </div>
-                      </td>
-
-                      {/* Config Sync */}
-                      <td className="py-3 px-4 font-mono text-[11px]">
-                        <span
-                          className={isSync ? 'text-emerald-700 font-semibold' : 'text-amber-700 font-semibold'}
-                          title={`Reported v${device.reportedConfigVersion} / Target v${device.desiredConfigVersion}`}
-                        >
-                          v{device.reportedConfigVersion} / v{device.desiredConfigVersion}{' '}
-                          {isSync ? '✓' : '⟳'}
-                        </span>
                       </td>
 
                       {/* Actions */}
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => {
-                              setSelectedFirmwareDeviceId(device.deviceId);
-                              setFirmwareModalOpen(true);
-                            }}
-                            className="p-1.5 rounded hover:bg-[#FFF7F9] text-[#826674] hover:text-[#C72C5E] cursor-pointer"
-                            title="ESP32 C++ Code & Wiring Pinout"
-                          >
-                            <Cpu className="h-4 w-4" />
-                          </button>
                           <button
                             onClick={() => navigate(`/admin/devices/${device.deviceId}`)}
                             className="p-1.5 rounded hover:bg-[#FFF7F9] text-[#C72C5E] cursor-pointer"
@@ -339,6 +310,13 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
                           >
                             <KeyRound className="h-4 w-4" />
                           </button>
+                          <button
+                            onClick={() => setDeletingDeviceId(device.deviceId)}
+                            className="p-1.5 rounded hover:bg-rose-50 text-rose-600 cursor-pointer"
+                            title="Remove Climate Monitor"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -349,6 +327,35 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
           </table>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deletingDeviceId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-sm w-full border border-rose-200 shadow-xl p-6 space-y-4">
+            <div className="flex items-center gap-2 text-rose-700">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <h3 className="text-sm font-bold">Remove Climate Monitor?</h3>
+            </div>
+            <p className="text-xs text-[#826674]">
+              This will permanently delete climate monitor <strong>{deletingDeviceId}</strong> and all associated historical data and telemetry records. This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setDeletingDeviceId(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-[#826674]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteDevice(deletingDeviceId)}
+                className="px-4 py-1.5 text-xs font-semibold bg-rose-600 text-white rounded-lg hover:bg-rose-700"
+              >
+                Confirm Removal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Register Device Modal */}
       {isRegisterModalOpen && (
@@ -525,12 +532,6 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
         </div>
       )}
 
-      {/* ESP32 Firmware & Wiring Guide Modal */}
-      <FirmwareGuideModal
-        isOpen={firmwareModalOpen}
-        onClose={() => setFirmwareModalOpen(false)}
-        deviceId={selectedFirmwareDeviceId}
-      />
     </div>
   );
 };

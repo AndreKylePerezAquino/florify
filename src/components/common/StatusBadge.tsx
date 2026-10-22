@@ -11,23 +11,6 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, type = 'device
   // Operational status colors: green (healthy), amber (warning), red (critical), gray (offline)
   if (type === 'device') {
     switch (status) {
-      case 'ONLINE':
-        return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-radar-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
-            ONLINE
-          </span>
-        );
-      case 'OFFLINE':
-        return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <span className="h-2 w-2 rounded-full bg-slate-400" />
-            OFFLINE
-          </span>
-        );
       case 'SENSOR_ERROR':
         return (
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600">
@@ -49,7 +32,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, type = 'device
         return (
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
             <span className="h-2 w-2 rounded-full bg-slate-400" />
-            UNKNOWN
+            ACTIVE
           </span>
         );
     }

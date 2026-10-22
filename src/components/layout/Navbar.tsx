@@ -46,8 +46,8 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate }) => {
               <span className="text-base font-bold tracking-tight text-[#C72C5E] whitespace-nowrap block">
                 Florify
               </span>
-              <span className="text-[11px] text-[#826674] hidden sm:block whitespace-nowrap">
-                ESP32 + DHT11 Cabin Telemetry
+              <span className="text-[11px] font-medium text-[#826674] whitespace-nowrap block leading-tight">
+                Cabin monitoring system
               </span>
             </div>
           </button>
@@ -105,15 +105,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate }) => {
               >
                 Audit Logs
               </button>
-              <button
-                onClick={() => navigate('/garden')}
-                className={`whitespace-nowrap transition-colors hover:text-[#C72C5E] cursor-pointer flex items-center gap-1.5 ${
-                  currentPath === '/garden' ? 'text-[#C72C5E] font-semibold' : ''
-                }`}
-              >
-                <span className="text-base">🌸</span>
-                <span>Garden</span>
-              </button>
             </>
           ) : (
             <>
@@ -124,15 +115,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate }) => {
                 }`}
               >
                 My Shuttle Devices
-              </button>
-              <button
-                onClick={() => navigate('/garden')}
-                className={`whitespace-nowrap transition-colors hover:text-[#C72C5E] cursor-pointer flex items-center gap-1.5 ${
-                  currentPath === '/garden' ? 'text-[#C72C5E] font-semibold' : ''
-                }`}
-              >
-                <span className="text-base">🌸</span>
-                <span>Garden</span>
               </button>
               <button
                 onClick={() => navigate('/profile')}
@@ -284,18 +266,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate }) => {
               >
                 Audit Logs
               </button>
-              <button
-                onClick={() => {
-                  navigate('/garden');
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${
-                  currentPath === '/garden' ? 'bg-[#FFF7F9] text-[#C72C5E]' : 'text-[#2E1826]'
-                }`}
-              >
-                <span>🌸</span>
-                <span>Interactive Garden</span>
-              </button>
             </>
           ) : (
             <>
@@ -309,18 +279,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate }) => {
                 }`}
               >
                 My Shuttle Devices
-              </button>
-              <button
-                onClick={() => {
-                  navigate('/garden');
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${
-                  currentPath === '/garden' ? 'bg-[#FFF7F9] text-[#C72C5E]' : 'text-[#2E1826]'
-                }`}
-              >
-                <span>🌸</span>
-                <span>Interactive Garden</span>
               </button>
               <button
                 onClick={() => {

@@ -14,7 +14,7 @@ export interface UserProfile {
   approvedBy?: string;
 }
 
-export type DeviceStatus = 'ONLINE' | 'OFFLINE' | 'SENSOR_ERROR' | 'DISABLED' | 'UNKNOWN';
+export type DeviceStatus = 'SENSOR_ERROR' | 'DISABLED' | 'UNKNOWN';
 export type FanState = 'ON' | 'OFF' | 'UNKNOWN';
 export type MistState = 'ON' | 'OFF' | 'UNKNOWN';
 export type OperatingMode = 'AUTO' | 'FORCE_ON' | 'FORCE_OFF';
@@ -50,6 +50,7 @@ export interface DeviceConfig {
   humidityEnabled: boolean;
   humidityOnRH: number;
   humidityOffRH: number;
+  dhtReadIntervalSeconds?: number;
   activationMode: ActivationMode;
   fanMode: OperatingMode;
   mistMode?: OperatingMode;

@@ -42,6 +42,7 @@ export const AdminDeviceSettingsPage: React.FC<AdminDeviceSettingsPageProps> = (
   const [humEnabled, setHumEnabled] = useState(currentConfig.humidityEnabled);
   const [humOn, setHumOn] = useState<number>(currentConfig.humidityOnRH);
   const [humOff, setHumOff] = useState<number>(currentConfig.humidityOffRH);
+  const [dhtReadInterval, setDhtReadInterval] = useState<number>(currentConfig.dhtReadIntervalSeconds || 5);
   const [activationMode, setActivationMode] = useState<ActivationMode>(currentConfig.activationMode);
 
   const [saving, setSaving] = useState(false);
@@ -57,6 +58,7 @@ export const AdminDeviceSettingsPage: React.FC<AdminDeviceSettingsPageProps> = (
       setHumEnabled(c.humidityEnabled);
       setHumOn(c.humidityOnRH);
       setHumOff(c.humidityOffRH);
+      setDhtReadInterval(c.dhtReadIntervalSeconds || 5);
       setActivationMode(c.activationMode);
     }
   }, [deviceId, deviceConfigs]);
@@ -78,6 +80,7 @@ export const AdminDeviceSettingsPage: React.FC<AdminDeviceSettingsPageProps> = (
     humEnabled !== currentConfig.humidityEnabled ||
     humOn !== currentConfig.humidityOnRH ||
     humOff !== currentConfig.humidityOffRH ||
+    dhtReadInterval !== (currentConfig.dhtReadIntervalSeconds || 5) ||
     activationMode !== currentConfig.activationMode;
 
   const handleSave = async (e: React.FormEvent) => {
@@ -94,9 +97,10 @@ export const AdminDeviceSettingsPage: React.FC<AdminDeviceSettingsPageProps> = (
         humidityEnabled: humEnabled,
         humidityOnRH: humOn,
         humidityOffRH: humOff,
+        dhtReadIntervalSeconds: dhtReadInterval,
         activationMode,
       });
-      setSuccessMessage('Automation configuration saved. Target configuration version incremented.');
+      setSuccessMessage('Automation configuration saved and synced to web. Target configuration version incremented.');
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err) {
       console.error(err);
@@ -340,6 +344,30 @@ export const AdminDeviceSettingsPage: React.FC<AdminDeviceSettingsPageProps> = (
                 </span>
               </div>
             </label>
+          </div>
+        </div>
+
+        {/* DHT11 Read Interval Card */}
+        <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
+          <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
+            <Settings className="h-4 w-4 text-[#C72C5E]" />
+            DHT11 Sensor Read Interval (Telemetry Polling)
+          </h3>
+          <p className="text-xs text-[#826674]">
+            Configure how frequently the ESP32 samples and reports DHT11 temperature and humidity telemetry to the web backend:
+          </p>
+          <div className="max-w-xs">
+            <select
+              value={dhtReadInterval}
+              onChange={(e) => setDhtReadInterval(parseInt(e.target.value, 10))}
+              className="w-full bg-[#FFF7F9]/40 border border-[#FDC3D1] rounded-lg px-3 py-2 text-xs font-mono text-[#2E1826]"
+            >
+              <option value={2}>2 Seconds (High Frequency)</option>
+              <option value={5}>5 Seconds (Recommended Standard)</option>
+              <option value={10}>10 Seconds (Balanced)</option>
+              <option value={30}>30 Seconds (Power Saving)</option>
+              <option value={60}>60 Seconds (Low Frequency)</option>
+            </select>
           </div>
         </div>
 

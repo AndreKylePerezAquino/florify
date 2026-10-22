@@ -7,6 +7,7 @@ import {
   setDoc,
   updateDoc,
   getDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -61,6 +62,7 @@ interface AppContextType {
   rejectUser: (uid: string) => Promise<void>;
   suspendUser: (uid: string) => Promise<void>;
   registerDevice: (deviceId: string, displayName: string, locationLabel?: string, driverUid?: string | null) => Promise<void>;
+  removeDevice: (deviceId: string) => Promise<void>;
   assignDevice: (deviceId: string, driverUid: string | null) => Promise<void>;
   updateConfig: (deviceId: string, config: Partial<DeviceConfig>) => Promise<void>;
   setFanOverride: (deviceId: string, mode: 'FORCE_ON' | 'FORCE_OFF', durationMinutes: number, reason: string) => Promise<void>;
@@ -499,7 +501,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       displayName: displayName.trim(),
       assignedDriverUid: driverUid || null,
       active: true,
-      status: 'OFFLINE',
+      status: 'UNKNOWN',
       firmwareVersion: 'v2.1.0-prod',
       sensorType: 'DHT11',
       latestFanState: 'OFF',
@@ -520,6 +522,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       humidityEnabled: true,
       humidityOnRH: 75.0,
       humidityOffRH: 65.0,
+      dhtReadIntervalSeconds: 5,
       activationMode: 'ANY',
       fanMode: 'AUTO',
       updatedAt: new Date().toISOString(),
@@ -533,6 +536,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       await logAuditEvent('DEVICE_REGISTERED', 'DEVICE', cleanId, `Registered ESP32 device ${displayName.trim()} (${cleanId})`);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `devices/${cleanId}`);
+    }
+  };
+
+  const removeDevice = async (deviceId: string) => {
+    try {
+      await deleteDoc(doc(db, 'devices', deviceId, 'config', 'current'));
+      await deleteDoc(doc(db, 'devices', deviceId));
+      await logAuditEvent('DEVICE_REMOVED', 'DEVICE', deviceId, `Removed climate monitor unit ${deviceId} and associated historical telemetry`);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `devices/${deviceId}`);
     }
   };
 
@@ -567,6 +580,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       humidityEnabled: partialConfig.humidityEnabled ?? ext.humidityEnabled ?? true,
       humidityOnRH: partialConfig.humidityOnRH ?? ext.humidityOnRH ?? 75.0,
       humidityOffRH: partialConfig.humidityOffRH ?? ext.humidityOffRH ?? 65.0,
+      dhtReadIntervalSeconds: partialConfig.dhtReadIntervalSeconds ?? ext.dhtReadIntervalSeconds ?? 5,
       activationMode: partialConfig.activationMode ?? ext.activationMode ?? 'ANY',
       fanMode: partialConfig.fanMode ?? ext.fanMode ?? 'AUTO',
       mistMode: partialConfig.mistMode ?? ext.mistMode ?? 'FORCE_OFF',
@@ -749,6 +763,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         rejectUser,
         suspendUser,
         registerDevice,
+        removeDevice,
         assignDevice,
         updateConfig,
         setFanOverride,

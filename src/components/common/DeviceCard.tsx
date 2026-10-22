@@ -22,7 +22,7 @@ interface DeviceCardProps {
 }
 
 export const DeviceCard: React.FC<DeviceCardProps> = ({ device, driver, onSelect, isAdmin }) => {
-  const isOnline = device.status === 'ONLINE';
+  const isOnline = device.active;
   const hasReading = device.latestTemperatureC !== undefined && device.latestHumidityRH !== undefined;
 
   // Temperature warning if >= 40°C
@@ -114,8 +114,8 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({ device, driver, onSelect
         {/* Dual Actuator Status (Relay 1 Fan & Relay 2 Mist) */}
         <div className="flex items-center justify-between py-2 border-t border-[#FDC3D1] text-xs">
           <div className="flex items-center gap-3">
-            {/* Relay 1: Fan */}
-            <div className="flex items-center gap-1.5" title="Relay Channel 1: Shuttle Cooling Fan">
+            {/* Cooling */}
+            <div className="flex items-center gap-1.5" title="Cooling Channel">
               <div className="relative flex items-center justify-center">
                 <Fan
                   className={`h-4 w-4 transition-colors ${
@@ -131,7 +131,7 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({ device, driver, onSelect
                   </span>
                 )}
               </div>
-              <span className="text-[#826674] text-[11px]">Fan:</span>
+              <span className="text-[#826674] text-[11px]">Cooling:</span>
               <span
                 className={`font-semibold font-mono text-[11px] transition-colors ${
                   device.latestFanState === 'ON' ? 'text-emerald-700' : 'text-slate-600'
@@ -141,8 +141,8 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({ device, driver, onSelect
               </span>
             </div>
 
-            {/* Relay 2: Mist */}
-            <div className="flex items-center gap-1.5" title="Relay Channel 2: Evaporative Mist / Humidifier Solenoid">
+            {/* Humidity */}
+            <div className="flex items-center gap-1.5" title="Humidity Channel">
               <div className="relative flex items-center justify-center">
                 <CloudRain
                   className={`h-4 w-4 transition-colors ${
@@ -158,7 +158,7 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({ device, driver, onSelect
                   </span>
                 )}
               </div>
-              <span className="text-[#826674] text-[11px]">Mist:</span>
+              <span className="text-[#826674] text-[11px]">Humidity:</span>
               <span
                 className={`font-semibold font-mono text-[11px] transition-colors ${
                   device.latestMistState === 'ON' ? 'text-sky-700' : 'text-slate-600'

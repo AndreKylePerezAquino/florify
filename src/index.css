@@ -109,6 +109,19 @@ body {
   animation: soft-pulse-glow 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 12s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fan-spin,
   .animate-radar-ping,

@@ -112,7 +112,7 @@ service cloud.firestore {
         isValidTelemetryPatch() ||
         request.resource.data.sensorType == 'DHT11'
       );
-      allow delete: if false;
+      allow delete: if isAdmin();
 
       // Device configuration subcollection
       match /config/{configDoc} {
@@ -120,7 +120,7 @@ service cloud.firestore {
         allow get: if isValidId(deviceId);
         allow list: if isAdmin() && isValidId(deviceId);
         allow create, update: if isAdmin() && isValidId(deviceId);
-        allow delete: if false;
+        allow delete: if isAdmin();
       }
 
       // Device readings subcollection

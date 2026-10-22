@@ -18,8 +18,8 @@ import { DriverDashboardPage } from './pages/driver/DriverDashboardPage';
 import { DriverDeviceDetailPage } from './pages/driver/DriverDeviceDetailPage';
 
 import { ProfilePage } from './pages/shared/ProfilePage';
-import { InteractiveGardenPage } from './pages/shared/InteractiveGardenPage';
 import { NotFoundPage } from './pages/shared/NotFoundPage';
+import { BackgroundFloralBloom } from './components/garden/BackgroundFloralBloom';
 
 const AppContent: React.FC = () => {
   const { currentUser, userProfile, loadingAuth } = useApp();
@@ -150,9 +150,6 @@ const AppContent: React.FC = () => {
     if (currentPath === '/profile') {
       return <ProfilePage navigate={navigate} />;
     }
-    if (currentPath === '/garden') {
-      return <InteractiveGardenPage navigate={navigate} />;
-    }
 
     return <NotFoundPage navigate={navigate} />;
   };
@@ -163,20 +160,26 @@ const AppContent: React.FC = () => {
     currentPath === '/access-denied';
 
   return (
-    <div className="min-h-screen bg-[#FFF7F9] flex flex-col font-sans text-[#2E1826]">
-      {!isPublicStandaloneRoute && (
-        <Navbar currentPath={currentPath} navigate={navigate} />
-      )}
+    <div className="min-h-screen bg-[#FFF7F9] flex flex-col font-sans text-[#2E1826] relative overflow-x-hidden">
+      {/* Interactive Floral Bloom Canvas Background (Pink Theme #FFF7F9) */}
+      <BackgroundFloralBloom />
 
-      <main className="flex-1">
-        {isPublicStandaloneRoute ? (
-          renderRoute()
-        ) : (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-            {renderRoute()}
-          </div>
+      {/* Main Content & Interactive App Layer */}
+      <div className="relative z-10 flex flex-col flex-1">
+        {!isPublicStandaloneRoute && (
+          <Navbar currentPath={currentPath} navigate={navigate} />
         )}
-      </main>
+
+        <main className="flex-1">
+          {isPublicStandaloneRoute ? (
+            renderRoute()
+          ) : (
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+              {renderRoute()}
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 };

@@ -30,12 +30,12 @@ export const AdminOverviewPage: React.FC<AdminOverviewPageProps> = ({ navigate }
     acknowledgeAlert,
   } = useApp();
 
-  const onlineDevicesCount = devices.filter((d) => d.status === 'ONLINE').length;
+  const onlineDevicesCount = devices.filter((d) => d.active).length;
   const assignedDevicesCount = devices.filter((d) => d.assignedDriverUid !== null).length;
 
   // Temperature and humidity averages from active devices
   const onlineWithReadings = devices.filter(
-    (d) => d.status === 'ONLINE' && d.latestTemperatureC !== undefined
+    (d) => d.active && d.latestTemperatureC !== undefined
   );
   const avgTemp =
     onlineWithReadings.length > 0
@@ -63,18 +63,11 @@ export const AdminOverviewPage: React.FC<AdminOverviewPageProps> = ({ navigate }
             Fleet Climate Administration
           </h1>
           <p className="text-xs text-[#826674] mt-0.5">
-            Monitor real-time DHT11 conditions, manage direct driver assignments, and oversee relay actuators.
+            Realtime cabin condition monitoring system
           </p>
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          <button
-            onClick={() => navigate('/garden')}
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#FDC3D1] hover:bg-[#FFF7F9] text-[#C72C5E] text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
-          >
-            <span>🌸</span>
-            <span>Floral Canvas</span>
-          </button>
           <button
             onClick={() => navigate('/admin/devices')}
             className="inline-flex items-center gap-2 px-4 py-2 bg-[#FF5C89] hover:bg-[#C72C5E] text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"

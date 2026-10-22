@@ -25,12 +25,12 @@ import {
   KeyRound,
   Radio,
   Cpu,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { HistoricalChart } from '../../components/common/HistoricalChart';
 import { SensorGauge } from '../../components/common/SensorGauge';
-import { FirmwareGuideModal } from '../../components/modals/FirmwareGuideModal';
 import { DeviceReading, DeviceConfig } from '../../types';
 
 interface AdminDeviceDetailPageProps {
@@ -48,6 +48,8 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
     returnMistToAuto,
     assignDevice,
     rotateDeviceCredential,
+    removeDevice,
+    updateConfig,
   } = useApp();
 
   const device = devices.find((d) => d.deviceId === deviceId);
@@ -55,6 +57,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
 
   const [liveConfig, setLiveConfig] = useState<DeviceConfig | undefined>(undefined);
   const [liveReadings, setLiveReadings] = useState<DeviceReading[]>([]);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   // Listen to live device configuration
   useEffect(() => {
@@ -87,7 +90,6 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
   // Override modal state
   const [overrideModalOpen, setOverrideModalOpen] = useState(false);
   const [overrideTarget, setOverrideTarget] = useState<'FAN' | 'MIST'>('FAN');
-  const [firmwareModalOpen, setFirmwareModalOpen] = useState(false);
   const [overrideMode, setOverrideMode] = useState<'FORCE_ON' | 'FORCE_OFF'>('FORCE_ON');
   const [overrideDuration, setOverrideDuration] = useState<number>(30); // 30 mins
   const [overrideReason, setOverrideReason] = useState<string>('Pre-cooling shuttle before boarding');
@@ -119,7 +121,10 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
     setOverrideConfirmChecked(false);
   };
 
-  const isSync = device.reportedConfigVersion === device.desiredConfigVersion;
+  const handleDeleteDevice = async () => {
+    await removeDevice(device.deviceId);
+    navigate('/admin/devices');
+  };
 
   return (
     <div className="space-y-6">
@@ -147,18 +152,18 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setFirmwareModalOpen(true)}
-            className="px-3 py-1.5 bg-[#FFF7F9] border border-[#FDC3D1] hover:bg-[#FFDBDB] text-[#C72C5E] text-xs font-semibold rounded-xl shadow-xs transition-all active:scale-[0.98] flex items-center gap-1.5 cursor-pointer"
-          >
-            <Cpu className="h-4 w-4" />
-            ESP32 Code & Wiring
-          </button>
-          <button
             onClick={() => navigate(`/admin/devices/${device.deviceId}/settings`)}
             className="px-3 py-1.5 bg-white border border-[#FDC3D1] hover:bg-[#FFF7F9] text-[#C72C5E] text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Settings className="h-4 w-4" />
             Automation Settings
+          </button>
+          <button
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="px-3 py-1.5 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <Trash2 className="h-4 w-4" />
+            Remove Monitor
           </button>
         </div>
       </div>
@@ -230,7 +235,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
           />
         </div>
 
-        {/* Relay 1: Fan Relay State */}
+        {/* Cooling Relay State */}
         <div className={`bg-white p-4 rounded-xl border shadow-xs hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 flex flex-col justify-between ${
           device.latestFanState === 'ON' ? 'border-emerald-300 bg-emerald-50/20' : 'border-[#FDC3D1]'
         }`}>
@@ -246,7 +251,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                     </span>
                   )}
                 </div>
-                Relay: Fan (Ch 1)
+                Cooling Channel
               </span>
               <span className="text-[10px] font-mono text-emerald-700 font-semibold">GPIO 26</span>
             </div>
@@ -265,13 +270,13 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
             <span>{device.reportedMode === 'AUTO' ? 'Sensor Hysteresis' : 'Admin Override'}</span>
             {device.latestFanState === 'ON' && (
               <span className="text-emerald-700 font-medium bg-emerald-100/70 px-1.5 py-0.5 rounded animate-pulse">
-                Airflow Active
+                Cooling Active
               </span>
             )}
           </div>
         </div>
 
-        {/* Relay: Mist / Humidifier Solenoid */}
+        {/* Humidity Relay State */}
         <div className={`bg-white p-4 rounded-xl border shadow-xs hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 flex flex-col justify-between ${
           device.latestMistState === 'ON' ? 'border-sky-300 bg-sky-50/20' : 'border-[#FDC3D1]'
         }`}>
@@ -287,7 +292,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                     </span>
                   )}
                 </div>
-                Relay: Mist (Ch 2)
+                Humidity Channel
               </span>
               <span className="text-[10px] font-mono text-sky-700 font-semibold">GPIO 27</span>
             </div>
@@ -303,10 +308,10 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
             </div>
           </div>
           <div className="mt-2 pt-2 border-t border-[#FDC3D1]/60 flex items-center justify-between text-[11px] text-[#826674]">
-            <span>Humidity Balancing</span>
+            <span>Humidity Regulation</span>
             {device.latestMistState === 'ON' && (
               <span className="text-sky-700 font-medium bg-sky-100/70 px-1.5 py-0.5 rounded animate-pulse">
-                Mist Active
+                Active
               </span>
             )}
           </div>
@@ -338,15 +343,15 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
         </div>
       </div>
 
-      {/* Manual Actuator Controls: Fan (Relay 1) & Mist (Relay 2) */}
+      {/* Manual Actuator Controls: Cooling OFF/ON & Humidity value% UP/DOWN */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Manual Fan Control Bar (Relay - GPIO 26) */}
+        {/* Cooling OFF/ON Control Bar */}
         <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
                 <Power className="h-4 w-4 text-[#C72C5E]" />
-                Relay: Fan Controls (GPIO 26)
+                Cooling OFF / ON Controls (GPIO 26)
               </h3>
               <p className="text-xs text-[#826674]">
                 Operating mode:{' '}
@@ -378,7 +383,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                     }}
                     className="px-3 py-1.5 bg-[#FFF7F9] hover:bg-[#FFDBDB] text-[#C72C5E] border border-[#FDC3D1] text-xs font-semibold rounded-lg cursor-pointer"
                   >
-                    Force Fan ON
+                    Cooling ON
                   </button>
                   <button
                     onClick={() => {
@@ -388,7 +393,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                     }}
                     className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg cursor-pointer"
                   >
-                    Force Fan OFF
+                    Cooling OFF
                   </button>
                 </>
               )}
@@ -396,58 +401,44 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
           </div>
         </div>
 
-        {/* Manual Mist Control Bar (Relay - GPIO 27) */}
+        {/* Humidity value% UP/DOWN Control Bar */}
         <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
                 <CloudRain className="h-4 w-4 text-sky-600" />
-                Relay: Mist Controls (GPIO 27)
+                Humidity value% UP / DOWN (GPIO 27)
               </h3>
               <p className="text-xs text-[#826674]">
-                Operating mode:{' '}
-                <strong className="text-sky-700 uppercase">{liveConfig?.mistMode || 'FORCE_OFF'}</strong>
-                {liveConfig?.mistOverrideExpiresAt && (
-                  <span className="ml-2 text-amber-700">
-                    (Expires in {Math.max(0, Math.round((new Date(liveConfig.mistOverrideExpiresAt).getTime() - Date.now()) / 60000))} mins)
-                  </span>
-                )}
+                Target Threshold:{' '}
+                <strong className="text-sky-700">{liveConfig?.humidityOnRH || 75.0}% RH</strong>
+                <span className="ml-2 text-slate-500">(Mode: {liveConfig?.mistMode || 'AUTO'})</span>
               </p>
             </div>
 
             <div className="flex items-center gap-2">
-              {liveConfig?.mistMode && liveConfig.mistMode !== 'FORCE_OFF' ? (
-                <button
-                  onClick={() => returnMistToAuto(device.deviceId)}
-                  className="px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  Turn Mist OFF
-                </button>
-              ) : (
-                <>
-                  <button
-                    onClick={() => {
-                      setOverrideTarget('MIST');
-                      setOverrideMode('FORCE_ON');
-                      setOverrideModalOpen(true);
-                    }}
-                    className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-semibold rounded-lg cursor-pointer"
-                  >
-                    Force Mist ON
-                  </button>
-                  <button
-                    onClick={() => {
-                      setOverrideTarget('MIST');
-                      setOverrideMode('FORCE_OFF');
-                      setOverrideModalOpen(true);
-                    }}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-semibold rounded-lg cursor-pointer"
-                  >
-                    Keep Mist OFF
-                  </button>
-                </>
-              )}
+              <button
+                onClick={async () => {
+                  const currentHum = liveConfig?.humidityOnRH || 75.0;
+                  const newHum = Math.max(20, currentHum - 5);
+                  await updateConfig(device.deviceId, { humidityOnRH: newHum });
+                }}
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold cursor-pointer"
+                title="Decrease Target Humidity 5%"
+              >
+                Humidity -5% (DOWN)
+              </button>
+              <button
+                onClick={async () => {
+                  const currentHum = liveConfig?.humidityOnRH || 75.0;
+                  const newHum = Math.min(100, currentHum + 5);
+                  await updateConfig(device.deviceId, { humidityOnRH: newHum });
+                }}
+                className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-xs font-semibold cursor-pointer"
+                title="Increase Target Humidity 5%"
+              >
+                Humidity +5% (UP)
+              </button>
             </div>
           </div>
         </div>
@@ -473,13 +464,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
               <span className="text-[#826674]">Sensor Type:</span>
               <span className="font-mono text-[#2E1826]">{device.sensorType || 'DHT11'} (Temperature & Humidity)</span>
             </div>
-            <div className="py-2 flex items-center justify-between">
-              <span className="text-[#826674]">Config Synchronization:</span>
-              <span className={`font-mono font-semibold ${isSync ? 'text-emerald-700' : 'text-amber-700'}`}>
-                Reported v{device.reportedConfigVersion} / Desired v{device.desiredConfigVersion}{' '}
-                {isSync ? '(Synchronized)' : '(Pending Device Acknowledgment)'}
-              </span>
-            </div>
+
             <div className="py-2 flex items-center justify-between">
               <span className="text-[#826674]">Last Heartbeat:</span>
               <span className="font-mono text-[#2E1826]">
@@ -601,12 +586,34 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
         </div>
       )}
 
-      {/* ESP32 Firmware & Wiring Guide Modal */}
-      <FirmwareGuideModal
-        isOpen={firmwareModalOpen}
-        onClose={() => setFirmwareModalOpen(false)}
-        deviceId={device.deviceId}
-      />
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-sm w-full border border-rose-200 shadow-xl p-6 space-y-4">
+            <div className="flex items-center gap-2 text-rose-700">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <h3 className="text-sm font-bold">Remove Climate Monitor?</h3>
+            </div>
+            <p className="text-xs text-[#826674]">
+              This will permanently delete climate monitor <strong>{device.deviceId}</strong> and all associated historical data and telemetry records. This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="px-3 py-1.5 text-xs font-semibold text-[#826674]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteDevice}
+                className="px-4 py-1.5 text-xs font-semibold bg-rose-600 text-white rounded-lg hover:bg-rose-700"
+              >
+                Confirm Removal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
