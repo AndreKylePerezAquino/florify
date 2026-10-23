@@ -15,7 +15,6 @@ import { AdminAlertsPage } from './pages/admin/AdminAlertsPage';
 import { AdminAuditLogsPage } from './pages/admin/AdminAuditLogsPage';
 
 import { DriverDashboardPage } from './pages/driver/DriverDashboardPage';
-import { DriverDeviceDetailPage } from './pages/driver/DriverDeviceDetailPage';
 
 import { ProfilePage } from './pages/shared/ProfilePage';
 import { NotFoundPage } from './pages/shared/NotFoundPage';
@@ -137,14 +136,9 @@ const AppContent: React.FC = () => {
       return <AdminAuditLogsPage />;
     }
 
-    // Driver routes
-    if (currentPath === '/driver') {
+    // Driver routes (Simplified inline telemetry monitor)
+    if (currentPath === '/driver' || currentPath.startsWith('/driver/')) {
       return <DriverDashboardPage navigate={navigate} />;
-    }
-    if (currentPath.startsWith('/driver/devices/')) {
-      const parts = currentPath.split('/');
-      const deviceId = parts[3];
-      return <DriverDeviceDetailPage deviceId={deviceId} navigate={navigate} />;
     }
 
     // Shared routes
