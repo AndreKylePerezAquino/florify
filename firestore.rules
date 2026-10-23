@@ -81,12 +81,17 @@ service cloud.firestore {
       ]);
     }
 
+    function isValidDriverLocationUpdate(userId) {
+      return isSignedIn() && request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentLocation', 'updatedAt']);
+    }
+
     // User collection
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
       allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidUserCreate(request.resource.data);
-      allow update: if isAdmin();
+      allow update: if isAdmin() || isValidDriverLocationUpdate(userId);
       allow delete: if false;
     }
 
@@ -110,6 +115,7 @@ service cloud.firestore {
       allow create, update: if isValidId(deviceId) && (
         isAdmin() || 
         isValidTelemetryPatch() ||
+        (isSignedIn() && resource.data.assignedDriverUid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['locationLabel', 'updatedAt'])) ||
         request.resource.data.sensorType == 'DHT11'
       );
       allow delete: if isAdmin();

@@ -10,6 +10,7 @@ import {
   MapPin
 } from 'lucide-react';
 import { Device } from '../../types';
+import { useApp } from '../../context/AppContext';
 
 interface LeafletDeviceMapProps {
   device?: Device;
@@ -19,6 +20,7 @@ interface LeafletDeviceMapProps {
 const DEFAULT_FALLBACK_COORDS: [number, number] = [14.5995, 120.9842];
 
 export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) => {
+  const { updateDriverLocation, userProfile } = useApp();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
@@ -44,6 +46,14 @@ export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) =>
           setLocationSource('GPS');
           setAccuracyMeters(Math.round(position.coords.accuracy));
           setGpsError(null);
+
+          if (userProfile?.role === 'DRIVER') {
+            updateDriverLocation({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+            });
+          }
         },
         (err) => {
           console.warn('Geolocation unavailable, using vehicle fallback:', err.message);
@@ -63,6 +73,14 @@ export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) =>
           setCoords(newCoords);
           setLocationSource('GPS');
           setAccuracyMeters(Math.round(position.coords.accuracy));
+
+          if (userProfile?.role === 'DRIVER') {
+            updateDriverLocation({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+            });
+          }
         },
         () => {
           // Keep current coords on transient watch error
@@ -79,7 +97,7 @@ export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) =>
         navigator.geolocation.clearWatch(watchId);
       }
     };
-  }, []);
+  }, [updateDriverLocation, userProfile]);
 
   // Initialize Leaflet Map
   useEffect(() => {

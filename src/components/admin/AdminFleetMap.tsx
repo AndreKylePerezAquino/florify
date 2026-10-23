@@ -43,10 +43,33 @@ const TRANSIT_STATIONS: { name: string; coords: [number, number] }[] = [
 ];
 
 /**
- * Deterministically resolves coordinates for any device.
- * Checks for explicit lat/long in locationLabel, otherwise maps through transit hubs.
+ * Deterministically resolves coordinates for any shuttle vehicle.
+ * Prioritizes live GPS reported from the driver's mobile device,
+ * then explicit device coordinates, transit hub assignment, or geographic jitter.
  */
-function getDeviceCoordinates(device: Device, index: number): { coords: [number, number]; stationName: string } {
+function getVehicleCoordinates(
+  device: Device,
+  driver: UserProfile | undefined,
+  index: number
+): { coords: [number, number]; isLiveGps: boolean; locationLabel: string } {
+  // 1. Live GPS directly from assigned driver mobile device
+  if (
+    driver?.currentLocation &&
+    typeof driver.currentLocation.latitude === 'number' &&
+    typeof driver.currentLocation.longitude === 'number' &&
+    !isNaN(driver.currentLocation.latitude) &&
+    !isNaN(driver.currentLocation.longitude) &&
+    Math.abs(driver.currentLocation.latitude) <= 90 &&
+    Math.abs(driver.currentLocation.longitude) <= 180
+  ) {
+    return {
+      coords: [driver.currentLocation.latitude, driver.currentLocation.longitude],
+      isLiveGps: true,
+      locationLabel: `Live GPS: ${driver.displayName || 'Driver'}`,
+    };
+  }
+
+  // 2. Explicit coordinates on device
   if (device.locationLabel) {
     const parts = device.locationLabel.split(',').map((s) => parseFloat(s.trim()));
     if (
@@ -56,18 +79,20 @@ function getDeviceCoordinates(device: Device, index: number): { coords: [number,
       Math.abs(parts[0]) <= 90 &&
       Math.abs(parts[1]) <= 180
     ) {
-      return { coords: [parts[0], parts[1]], stationName: device.locationLabel };
+      return { coords: [parts[0], parts[1]], isLiveGps: false, locationLabel: device.locationLabel };
     }
   }
 
+  // 3. Fallback transit hubs
   if (index < TRANSIT_STATIONS.length) {
     return {
       coords: TRANSIT_STATIONS[index].coords,
-      stationName: TRANSIT_STATIONS[index].name,
+      isLiveGps: false,
+      locationLabel: TRANSIT_STATIONS[index].name,
     };
   }
 
-  // Fallback hash-offset to prevent overlapping markers
+  // 4. Fallback hash-offset to prevent overlapping markers
   let hash = 0;
   for (let i = 0; i < device.deviceId.length; i++) {
     hash = (hash << 5) - hash + device.deviceId.charCodeAt(i);
@@ -77,7 +102,8 @@ function getDeviceCoordinates(device: Device, index: number): { coords: [number,
   const lngOffset = (((Math.abs(hash * 31) % 1000) / 1000) - 0.5) * 0.06;
   return {
     coords: [14.5995 + latOffset, 120.9842 + lngOffset],
-    stationName: device.locationLabel || `Sector ${Math.abs(hash % 8) + 1}`,
+    isLiveGps: false,
+    locationLabel: device.locationLabel || `Sector ${Math.abs(hash % 8) + 1}`,
   };
 }
 
@@ -202,8 +228,12 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
       if (filterMode === 'ONLINE' && !isOnline) return;
       if (filterMode === 'ALERT' && !isAlert) return;
 
-      const { coords } = getDeviceCoordinates(device, index);
+      const driver = device.assignedDriverUid ? userMap.get(device.assignedDriverUid) : undefined;
+      const { coords, isLiveGps } = getVehicleCoordinates(device, driver, index);
       boundsPoints.push(coords);
+
+      const driverDisplayName = driver?.displayName || 'Unassigned Driver';
+      const driverInitial = (driver?.displayName || 'D').charAt(0).toUpperCase();
 
       // Theme colors for marker pin
       const pinColor = !isOnline
@@ -218,36 +248,43 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
         ? 'rgba(225, 29, 72, 0.25)'
         : 'rgba(5, 150, 105, 0.22)';
 
-      const tempDisplay =
-        device.latestTemperatureC !== undefined
-          ? `${device.latestTemperatureC.toFixed(1)}°`
-          : '--°';
-
-      // Custom marker icon with shuttle label and live temperature pill
+      // Custom marker icon with integrated driver badge and live GPS indicator
       const customIcon = L.divIcon({
         className: 'admin-leaflet-marker',
         html: `
           <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%); cursor: pointer;">
-            <!-- Shuttle Pill Badge -->
-            <div style="background: #2E1826; color: #FFFFFF; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 9999px; box-shadow: 0 2px 4px rgba(0,0,0,0.25); white-space: nowrap; margin-bottom: 2px; border: 1px solid ${pinColor}; display: flex; align-items: center; gap: 4px;">
-              <span style="display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: ${pinColor};"></span>
+            <!-- Shuttle & Driver Integrated Top Pill -->
+            <div style="background: #2E1826; color: #FFFFFF; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; box-shadow: 0 2px 5px rgba(0,0,0,0.25); white-space: nowrap; margin-bottom: 2px; border: 1px solid ${pinColor}; display: flex; align-items: center; gap: 4.5px;">
+              ${
+                isLiveGps
+                  ? `<span style="display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: #10B981; box-shadow: 0 0 6px #10B981;"></span>`
+                  : `<span style="display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: ${pinColor};"></span>`
+              }
               <span>${device.displayName || device.deviceId}</span>
-              <span style="color: ${isAlert ? '#FDA4AF' : '#A7F3D0'}; font-family: monospace;">${tempDisplay}</span>
+              <span style="opacity: 0.35;">•</span>
+              <span style="color: ${isLiveGps ? '#6EE7B7' : '#FDC3D1'}; font-weight: 600;">${driverDisplayName}</span>
             </div>
 
-            <!-- Pin Body -->
-            <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+            <!-- Pin Body with Integrated Driver Badge & Live GPS Pulse -->
+            <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
               ${
-                isOnline
-                  ? `<div style="position: absolute; width: 32px; height: 32px; border-radius: 9999px; background: ${pulseBg}; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
+                isLiveGps
+                  ? `<div style="position: absolute; width: 36px; height: 36px; border-radius: 9999px; background: rgba(16, 185, 129, 0.32); animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
+                  : isOnline
+                  ? `<div style="position: absolute; width: 32px; height: 32px; border-radius: 9999px; background: ${pulseBg}; animation: ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
                   : ''
               }
-              <div style="position: relative; width: 24px; height: 24px; border-radius: 9999px; background: ${pinColor}; border: 2.5px solid #FFFFFF; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.25); display: flex; align-items: center; justify-content: center; color: white;">
+              <div style="position: relative; width: 25px; height: 25px; border-radius: 9999px; background: ${pinColor}; border: 2.5px solid #FFFFFF; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.25); display: flex; align-items: center; justify-content: center; color: white;">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/>
                   <circle cx="7" cy="17" r="2"/>
                   <circle cx="17" cy="17" r="2"/>
                 </svg>
+              </div>
+
+              <!-- Overlapping Integrated Driver Badge -->
+              <div style="position: absolute; bottom: -2px; right: -2px; width: 16px; height: 16px; border-radius: 9999px; background: ${isLiveGps ? '#059669' : '#C72C5E'}; border: 1.5px solid #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 800; color: #FFFFFF;" title="${driverDisplayName}${isLiveGps ? ' (Live GPS)' : ''}">
+                ${driverInitial}
               </div>
             </div>
           </div>
@@ -258,11 +295,10 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
 
       const marker = L.marker(coords, { icon: customIcon }).addTo(map);
 
-      // Popup containing ONLY the display name of the monitoring device
-      const displayName = device.displayName || device.deviceId || 'ESP32 Device';
+      // Popup containing ONLY the driver display name
       marker.bindPopup(`
         <div style="font-family: inherit; font-size: 13px; font-weight: 700; color: #2E1826; text-align: center; padding: 4px 8px; white-space: nowrap;">
-          ${displayName}
+          ${driverDisplayName}
         </div>
       `);
 
@@ -426,10 +462,11 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
               filteredDevices.map((device) => {
                 const isOnline = isDeviceConnected(device);
                 const isSelected = selectedDeviceId === device.deviceId;
-                const temp =
-                  device.latestTemperatureC !== undefined
-                    ? `${device.latestTemperatureC.toFixed(1)}°C`
-                    : '--';
+                const driver = device.assignedDriverUid ? userMap.get(device.assignedDriverUid) : undefined;
+                const isLiveGps = !!(
+                  driver?.currentLocation &&
+                  typeof driver.currentLocation.latitude === 'number'
+                );
 
                 return (
                   <button
@@ -443,18 +480,27 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
                   >
                     <span
                       className={`w-2 h-2 rounded-full ${
-                        isOnline ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-slate-400'
+                        isLiveGps
+                          ? 'bg-emerald-500 ring-2 ring-emerald-300 animate-pulse'
+                          : isOnline
+                          ? 'bg-emerald-500 ring-2 ring-emerald-200'
+                          : 'bg-slate-400'
                       }`}
+                      title={isLiveGps ? 'Live Driver Mobile GPS Active' : isOnline ? 'Online' : 'Offline'}
                     />
                     <span className="font-semibold">
                       {device.displayName || device.deviceId}
                     </span>
                     <span
-                      className={`font-mono text-[11px] ${
-                        isSelected ? 'text-pink-100' : 'text-[#826674]'
+                      className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold ${
+                        isSelected
+                          ? 'bg-white/20 text-white'
+                          : isLiveGps
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : 'bg-[#FFF7F9] text-[#826674] border border-[#FDC3D1]/50'
                       }`}
                     >
-                      {temp}
+                      {driver?.displayName || 'Unassigned'}
                     </span>
                   </button>
                 );

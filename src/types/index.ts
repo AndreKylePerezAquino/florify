@@ -2,6 +2,13 @@ export type UserRole = 'ADMIN' | 'DRIVER';
 export type AdminLevel = 'MASTER' | 'STANDARD';
 export type UserStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
 
+export interface DriverLocation {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  updatedAt: string;
+}
+
 export interface UserProfile {
   uid: string;
   displayName: string;
@@ -14,6 +21,7 @@ export interface UserProfile {
   updatedAt: string;
   approvedAt?: string;
   approvedBy?: string;
+  currentLocation?: DriverLocation;
 }
 
 export type DeviceStatus = 'SENSOR_ERROR' | 'DISABLED' | 'UNKNOWN';

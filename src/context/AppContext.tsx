@@ -33,6 +33,7 @@ import {
   DeviceConfig,
   Alert,
   AuditLog,
+  DriverLocation,
 } from '../types';
 
 interface AppContextType {
@@ -79,6 +80,7 @@ interface AppContextType {
   toggleDeviceStatus: (deviceId: string, active: boolean) => Promise<void>;
   rotateDeviceCredential: (deviceId: string) => Promise<string>;
   acknowledgeAlert: (alertId: string) => Promise<void>;
+  updateDriverLocation: (coords: { latitude: number; longitude: number; accuracy?: number }) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -799,6 +801,63 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const lastLocationUpdateRef = useRef<{ timestamp: number; lat: number; lng: number }>({
+    timestamp: 0,
+    lat: 0,
+    lng: 0,
+  });
+
+  const updateDriverLocation = async (coords: { latitude: number; longitude: number; accuracy?: number }) => {
+    if (!currentUser) return;
+    const now = Date.now();
+    const prev = lastLocationUpdateRef.current;
+    const timeDiff = now - prev.timestamp;
+    const latDiff = Math.abs(coords.latitude - prev.lat);
+    const lngDiff = Math.abs(coords.longitude - prev.lng);
+
+    // Throttle: send at most once every 5 seconds unless moved noticeably
+    if (timeDiff < 5000 && latDiff < 0.0001 && lngDiff < 0.0001) {
+      return;
+    }
+
+    lastLocationUpdateRef.current = {
+      timestamp: now,
+      lat: coords.latitude,
+      lng: coords.longitude,
+    };
+
+    try {
+      const locationData: Record<string, any> = {
+        latitude: Number(coords.latitude.toFixed(6)),
+        longitude: Number(coords.longitude.toFixed(6)),
+        updatedAt: new Date().toISOString(),
+      };
+      if (typeof coords.accuracy === 'number' && !isNaN(coords.accuracy)) {
+        locationData.accuracy = Math.round(coords.accuracy);
+      }
+
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        currentLocation: locationData,
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Synchronize assigned device locationLabel
+      const assigned = devices.find((d) => d.assignedDriverUid === currentUser.uid);
+      if (assigned) {
+        try {
+          await updateDoc(doc(db, 'devices', assigned.deviceId), {
+            locationLabel: `${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)}`,
+            updatedAt: new Date().toISOString(),
+          });
+        } catch (devErr) {
+          console.debug('Assigned device location update notice:', devErr);
+        }
+      }
+    } catch (err) {
+      console.warn('Driver location update notice:', err);
+    }
+  };
+
   // Metrics derived from live Firestore collections
   const pendingUsersCount = useMemo(() => {
     return allUsers.filter((u) => u.status === 'PENDING').length;
@@ -847,6 +906,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toggleDeviceStatus,
         rotateDeviceCredential,
         acknowledgeAlert,
+        updateDriverLocation,
       }}
     >
       {children}
