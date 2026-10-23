@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { DriverTelemetryCard } from '../../components/common/DriverTelemetryCard';
-import { MockShuttleMap } from '../../components/driver/MockShuttleMap';
+import { LeafletDeviceMap } from '../../components/driver/LeafletDeviceMap';
 
 interface DriverDashboardPageProps {
   navigate: (path: string) => void;
@@ -68,23 +68,20 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({ naviga
         )}
       </div>
 
-      {/* Mock Google Maps Navigation & Route Simulation Section */}
+      {/* Embedded Leaflet Device Map Section */}
       <div className="space-y-3">
         <div className="flex items-center justify-between px-1">
           <div>
             <h2 className="text-sm font-bold text-[#2E1826]">
-              Shuttle Transit Route & Navigation
+              Shuttle Live Location
             </h2>
             <p className="text-[11px] text-[#826674]">
-              Real-time route simulation, waypoints, and transit schedule
+              View-only Leaflet map with zoom, movable pan, and real-time device coordinates
             </p>
           </div>
         </div>
 
-        <MockShuttleMap
-          shuttleName={primaryDevice?.displayName || 'Assigned Shuttle'}
-          licensePlate={primaryDevice?.deviceId || 'ESP32-FLT-882'}
-        />
+        <LeafletDeviceMap device={primaryDevice} />
       </div>
     </div>
   );
