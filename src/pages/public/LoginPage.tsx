@@ -171,8 +171,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FFF7F9] flex flex-col justify-center items-center px-4 py-8 sm:py-12">
-      <div className="max-w-md w-full bg-white rounded-2xl border border-[#FDC3D1] shadow-sm p-6 sm:p-8 space-y-6">
+    <div className="min-h-screen bg-transparent flex flex-col justify-center items-center px-4 py-8 sm:py-12 relative">
+      <div
+        data-no-bloom="true"
+        className="max-w-md w-full bg-white/92 backdrop-blur-md rounded-2xl border border-[#FDC3D1] shadow-lg p-6 sm:p-8 space-y-6 relative z-10"
+      >
         {/* Brand Header */}
         <div className="text-center space-y-3">
           <div className="mx-auto h-16 w-16 sm:h-20 sm:w-20 rounded-2xl bg-[#FFF7F9] border border-[#FDC3D1] flex items-center justify-center p-2.5 shadow-xs overflow-hidden">
@@ -588,7 +591,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
       </div>
 
       {/* Database Connection Info & Quick Copy Helper */}
-      <div className="mt-3.5 flex items-center justify-between gap-3 px-4 py-2 bg-white/70 backdrop-blur-xs rounded-xl border border-[#FDC3D1] text-[11px] text-[#826674] max-w-md w-full shadow-2xs">
+      <div
+        data-no-bloom="true"
+        className="mt-3.5 flex items-center justify-between gap-3 px-4 py-2 bg-white/85 backdrop-blur-md rounded-xl border border-[#FDC3D1] text-[11px] text-[#826674] max-w-md w-full shadow-2xs relative z-10"
+      >
         <div className="flex items-center gap-1.5 truncate">
           <span className="font-semibold text-[#2E1826]">Database:</span>
           <span className="font-mono text-[#C72C5E] truncate">

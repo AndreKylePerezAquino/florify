@@ -247,6 +247,11 @@ export const BackgroundFloralBloom: React.FC = () => {
     }, 60);
   }, []);
 
+  const triggerBloomRef = useRef(triggerBloom);
+  useEffect(() => {
+    triggerBloomRef.current = triggerBloom;
+  }, [triggerBloom]);
+
   // WebGL Lifecycle Setup
   useEffect(() => {
     const canvas = webglCanvasRef.current;
@@ -338,10 +343,7 @@ export const BackgroundFloralBloom: React.FC = () => {
 
     // Initial subtle ambient blossom to greet the user
     const initialTimer = setTimeout(() => {
-      pointerRef.current.x = 0.85;
-      pointerRef.current.y = 0.28;
-      pointerRef.current.clicked = true;
-      setBloomCount(1);
+      triggerBloomRef.current(window.innerWidth * 0.82, window.innerHeight * 0.3);
     }, 600);
 
     let animationFrameId: number;
@@ -479,9 +481,12 @@ export const BackgroundFloralBloom: React.FC = () => {
     };
   }, []);
 
-  // Global background click listener that ignores interactive buttons/inputs
+  // Global background click & touch listener that ignores interactive buttons/inputs
   useEffect(() => {
-    const handleDocumentClick = (e: MouseEvent) => {
+    const handlePointerDown = (e: PointerEvent) => {
+      // Only respond to primary click (left mouse button) or touch/pen
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+
       const target = e.target as HTMLElement | null;
       if (!target) return;
 
@@ -494,14 +499,14 @@ export const BackgroundFloralBloom: React.FC = () => {
         return;
       }
 
-      // Valid background click: sprout bloom!
+      // Valid background click / touch: sprout bloom!
       triggerBloom(e.clientX, e.clientY);
     };
 
-    window.addEventListener('click', handleDocumentClick, { passive: true });
+    window.addEventListener('pointerdown', handlePointerDown, { passive: true });
 
     return () => {
-      window.removeEventListener('click', handleDocumentClick);
+      window.removeEventListener('pointerdown', handlePointerDown);
     };
   }, [triggerBloom]);
 

@@ -87,8 +87,9 @@ const AppContent: React.FC = () => {
 
   if (loadingAuth) {
     return (
-      <div className="min-h-screen bg-[#FFF7F9] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
+      <div className="min-h-screen bg-[#FFF7F9] flex items-center justify-center relative">
+        <BackgroundFloralBloom />
+        <div className="relative z-10 flex flex-col items-center gap-3 bg-white/90 backdrop-blur-md px-6 py-5 rounded-2xl border border-[#FDC3D1] shadow-sm">
           <div className="h-10 w-10 rounded-full border-3 border-[#FF5C89] border-t-transparent animate-spin" />
           <span className="text-xs font-semibold text-[#C72C5E]">Connecting to Shuttle Climate Network...</span>
         </div>

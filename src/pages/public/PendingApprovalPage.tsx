@@ -10,8 +10,11 @@ export const PendingApprovalPage: React.FC<PendingApprovalPageProps> = ({ naviga
   const { currentUser, userProfile, logout } = useApp();
 
   return (
-    <div className="min-h-screen bg-[#FFF7F9] flex flex-col justify-center items-center px-4 py-12">
-      <div className="max-w-md w-full bg-white rounded-2xl border border-[#FDC3D1] shadow-sm p-8 text-center space-y-6">
+    <div className="min-h-screen bg-transparent flex flex-col justify-center items-center px-4 py-12 relative">
+      <div
+        data-no-bloom="true"
+        className="max-w-md w-full bg-white/92 backdrop-blur-md rounded-2xl border border-[#FDC3D1] shadow-lg p-8 text-center space-y-6 relative z-10"
+      >
         <div className="mx-auto h-16 w-16 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shadow-xs">
           <Clock className="h-8 w-8" />
         </div>
