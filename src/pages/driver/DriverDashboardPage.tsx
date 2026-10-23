@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { DriverTelemetryCard } from '../../components/common/DriverTelemetryCard';
+import { MockShuttleMap } from '../../components/driver/MockShuttleMap';
 
 interface DriverDashboardPageProps {
   navigate: (path: string) => void;
@@ -18,6 +19,7 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({ naviga
 
   // Filter devices assigned to this driver
   const assignedDevices = devices.filter((d) => d.assignedDriverUid === activeDriverUid);
+  const primaryDevice = assignedDevices[0];
 
   return (
     <div className="space-y-6">
@@ -64,6 +66,25 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({ naviga
             ))}
           </div>
         )}
+      </div>
+
+      {/* Mock Google Maps Navigation & Route Simulation Section */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <div>
+            <h2 className="text-sm font-bold text-[#2E1826]">
+              Shuttle Transit Route & Navigation
+            </h2>
+            <p className="text-[11px] text-[#826674]">
+              Real-time route simulation, waypoints, and transit schedule
+            </p>
+          </div>
+        </div>
+
+        <MockShuttleMap
+          shuttleName={primaryDevice?.displayName || 'Assigned Shuttle'}
+          licensePlate={primaryDevice?.deviceId || 'ESP32-FLT-882'}
+        />
       </div>
     </div>
   );
