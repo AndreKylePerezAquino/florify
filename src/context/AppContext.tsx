@@ -27,6 +27,7 @@ import {
 import {
   UserProfile,
   UserRole,
+  AdminLevel,
   UserStatus,
   Device,
   DeviceConfig,
@@ -58,9 +59,15 @@ interface AppContextType {
   ) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
-  approveUser: (uid: string, role?: UserRole) => Promise<void>;
+  approveUser: (uid: string, role?: UserRole, adminLevel?: AdminLevel) => Promise<void>;
   rejectUser: (uid: string) => Promise<void>;
   suspendUser: (uid: string) => Promise<void>;
+  transferAdminLevel: (
+    targetUid: string,
+    newRole: UserRole,
+    newAdminLevel?: AdminLevel,
+    reason?: string
+  ) => Promise<void>;
   registerDevice: (deviceId: string, displayName: string, locationLabel?: string, driverUid?: string | null) => Promise<void>;
   removeDevice: (deviceId: string) => Promise<void>;
   assignDevice: (deviceId: string, driverUid: string | null) => Promise<void>;
@@ -151,10 +158,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
           if (snap.exists()) {
             const data = snap.data() as UserProfile;
-            // Root bootstrap and env admin accounts automatically maintain ADMIN + APPROVED
-            if (isBootstrapEmail && (data.role !== 'ADMIN' || data.status !== 'APPROVED')) {
+            // Root bootstrap and env admin accounts automatically maintain ADMIN + APPROVED + MASTER
+            if (isBootstrapEmail && (data.role !== 'ADMIN' || data.status !== 'APPROVED' || data.adminLevel !== 'MASTER')) {
               const updated: Partial<UserProfile> = {
                 role: 'ADMIN',
+                adminLevel: 'MASTER',
                 status: 'APPROVED',
                 updatedAt: new Date().toISOString(),
                 approvedBy: isEnvAdmin ? 'ENV_ADMIN_CONFIG' : 'SYSTEM_BOOTSTRAP',
@@ -162,7 +170,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               await updateDoc(userDocRef, updated);
               setUserProfile({ ...data, ...updated } as UserProfile);
             } else {
-              setUserProfile(data);
+              const profileWithDefaults: UserProfile = {
+                ...data,
+                adminLevel: data.role === 'ADMIN' ? (data.adminLevel || 'MASTER') : undefined,
+              };
+              setUserProfile(profileWithDefaults);
             }
 
             // Sync admin claimed flag if this user is an admin
@@ -199,6 +211,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             };
+
+            if (willBeAdmin) {
+              newProfileData.adminLevel = 'MASTER';
+            }
 
             // Only attach optional fields if they have concrete valid values (Firestore rejects undefined)
             if (user.photoURL) {
@@ -449,16 +465,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const approveUser = async (uid: string, role: UserRole = 'DRIVER') => {
+  const approveUser = async (uid: string, role: UserRole = 'DRIVER', adminLevel?: AdminLevel) => {
     try {
-      await updateDoc(doc(db, 'users', uid), {
+      const updateData: Record<string, any> = {
         status: 'APPROVED',
         role,
         approvedAt: new Date().toISOString(),
         approvedBy: currentUser?.uid || 'admin',
         updatedAt: new Date().toISOString(),
-      });
-      await logAuditEvent('USER_APPROVED', 'USER', uid, `Approved user ${uid} as ${role}`);
+      };
+      if (role === 'ADMIN') {
+        updateData.adminLevel = adminLevel || 'STANDARD';
+      } else {
+        updateData.adminLevel = deleteField();
+      }
+      await updateDoc(doc(db, 'users', uid), updateData);
+      await logAuditEvent(
+        'USER_APPROVED',
+        'USER',
+        uid,
+        `Approved user ${uid} as ${role}${role === 'ADMIN' ? ` (${updateData.adminLevel})` : ''}`
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`);
     }
@@ -485,6 +512,52 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       await logAuditEvent('USER_SUSPENDED', 'USER', uid, `Suspended account ${uid}`);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`);
+    }
+  };
+
+  const transferAdminLevel = async (
+    targetUid: string,
+    newRole: UserRole,
+    newAdminLevel: AdminLevel = 'STANDARD',
+    reason: string = 'Role and hierarchy update'
+  ) => {
+    try {
+      const targetUser = allUsers.find((u) => u.uid === targetUid);
+      const updateData: Record<string, any> = {
+        role: newRole,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (newRole === 'ADMIN') {
+        updateData.adminLevel = newAdminLevel;
+        if (targetUser?.status !== 'APPROVED') {
+          updateData.status = 'APPROVED';
+          updateData.approvedAt = new Date().toISOString();
+          updateData.approvedBy = currentUser?.uid || 'admin';
+        }
+      } else {
+        updateData.adminLevel = deleteField();
+      }
+
+      await updateDoc(doc(db, 'users', targetUid), updateData);
+      await logAuditEvent(
+        'ADMIN_LEVEL_TRANSFERRED',
+        'USER',
+        targetUid,
+        `Transferred ${targetUser?.displayName || targetUser?.email || targetUid} to ${newRole}${newRole === 'ADMIN' ? ` (${newAdminLevel})` : ''}. Reason: ${reason}`
+      );
+
+      // If updating currently logged in user, refresh local state
+      if (currentUser?.uid === targetUid && userProfile) {
+        setUserProfile({
+          ...userProfile,
+          role: newRole,
+          adminLevel: newRole === 'ADMIN' ? newAdminLevel : undefined,
+          updatedAt: updateData.updatedAt,
+        });
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${targetUid}`);
     }
   };
 
@@ -762,6 +835,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         approveUser,
         rejectUser,
         suspendUser,
+        transferAdminLevel,
         registerDevice,
         removeDevice,
         assignDevice,

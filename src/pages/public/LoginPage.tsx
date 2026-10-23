@@ -11,10 +11,9 @@ import {
   Crown,
   ArrowRight,
   KeyRound,
-  Copy,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { formatAuthError, activeFirebaseConfig } from '../../lib/firebase';
+import { formatAuthError } from '../../lib/firebase';
 
 interface LoginPageProps {
   navigate: (path: string) => void;
@@ -52,26 +51,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
   // Password reset state
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
-  const [copiedConfig, setCopiedConfig] = useState(false);
-
-  const handleCopyConfig = () => {
-    const configToCopy = JSON.stringify(
-      {
-        projectId: activeFirebaseConfig.projectId || 'florify-c5dea',
-        apiKey: activeFirebaseConfig.apiKey || '',
-        authDomain: activeFirebaseConfig.authDomain || 'florify-c5dea.firebaseapp.com',
-        firestoreDatabaseId: activeFirebaseConfig.firestoreDatabaseId || '(default)',
-        storageBucket: activeFirebaseConfig.storageBucket || 'florify-c5dea.firebasestorage.app',
-        messagingSenderId: activeFirebaseConfig.messagingSenderId || '1048917662360',
-        appId: activeFirebaseConfig.appId || '1048917662360',
-      },
-      null,
-      2
-    );
-    navigator.clipboard.writeText(configToCopy);
-    setCopiedConfig(true);
-    setTimeout(() => setCopiedConfig(false), 2500);
-  };
 
   // Refresh admin claimed status when switching to signup
   useEffect(() => {
@@ -190,7 +169,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
               Florify
             </h1>
             <p className="mt-1 text-xs sm:text-sm text-[#826674] leading-relaxed">
-              IoT temperature & humidity monitoring with automated ventilation for fleet shuttles.
+              Cabin Climate control and realtime temperature and humidity monitoring system
             </p>
           </div>
         </div>
@@ -588,37 +567,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
           <ShieldCheck className="h-3.5 w-3.5 text-[#FF5C89]" />
           Enterprise-grade secure authentication. Powered by Florify.
         </p>
-      </div>
-
-      {/* Database Connection Info & Quick Copy Helper */}
-      <div
-        data-no-bloom="true"
-        className="mt-3.5 flex items-center justify-between gap-3 px-4 py-2 bg-white/85 backdrop-blur-md rounded-xl border border-[#FDC3D1] text-[11px] text-[#826674] max-w-md w-full shadow-2xs relative z-10"
-      >
-        <div className="flex items-center gap-1.5 truncate">
-          <span className="font-semibold text-[#2E1826]">Database:</span>
-          <span className="font-mono text-[#C72C5E] truncate">
-            {activeFirebaseConfig.projectId || 'florify-c5dea'} · {activeFirebaseConfig.firestoreDatabaseId || '(default)'}
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={handleCopyConfig}
-          className="flex items-center gap-1 text-[#C72C5E] hover:text-[#FF5C89] font-medium shrink-0 cursor-pointer transition-colors"
-          title="Copy ready-to-paste VITE_FIREBASE_CONFIG JSON"
-        >
-          {copiedConfig ? (
-            <>
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-              <span className="text-emerald-700 font-semibold">Copied!</span>
-            </>
-          ) : (
-            <>
-              <Copy className="h-3.5 w-3.5" />
-              <span>Copy Config</span>
-            </>
-          )}
-        </button>
       </div>
     </div>
   );

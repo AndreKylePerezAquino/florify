@@ -1,4 +1,5 @@
 export type UserRole = 'ADMIN' | 'DRIVER';
+export type AdminLevel = 'MASTER' | 'STANDARD';
 export type UserStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
 
 export interface UserProfile {
@@ -7,6 +8,7 @@ export interface UserProfile {
   photoURL?: string;
   email: string;
   role: UserRole;
+  adminLevel?: AdminLevel;
   status: UserStatus;
   createdAt: string;
   updatedAt: string;

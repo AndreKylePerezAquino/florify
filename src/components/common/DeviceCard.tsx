@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Device, UserProfile } from '../../types';
 import { StatusBadge } from './StatusBadge';
+import { isDeviceConnected } from '../../lib/deviceStatus';
 
 interface DeviceCardProps {
   device: Device;
@@ -22,7 +23,7 @@ interface DeviceCardProps {
 }
 
 export const DeviceCard: React.FC<DeviceCardProps> = ({ device, driver, onSelect, isAdmin }) => {
-  const isOnline = device.active;
+  const isOnline = isDeviceConnected(device);
   const hasReading = device.latestTemperatureC !== undefined && device.latestHumidityRH !== undefined;
 
   // Temperature warning if >= 40°C
@@ -55,7 +56,7 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({ device, driver, onSelect
             </div>
           </div>
 
-          <StatusBadge status={device.status} type="device" />
+          <StatusBadge status={device.status} type="device" isOnline={isOnline} />
         </div>
 
         {/* Telemetry Numbers Grid */}

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { isDeviceConnected } from '../../lib/deviceStatus';
 import { DeviceStatus } from '../../types';
 
 interface AdminDevicesPageProps {
@@ -213,7 +214,11 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
 
                       {/* Status */}
                       <td className="py-3 px-4">
-                        <StatusBadge status={device.status} type="device" />
+                        <StatusBadge
+                          status={device.status}
+                          type="device"
+                          isOnline={isDeviceConnected(device)}
+                        />
                       </td>
 
                       {/* Assigned Driver */}

@@ -14,6 +14,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { DeviceCard } from '../../components/common/DeviceCard';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { isDeviceConnected } from '../../lib/deviceStatus';
 
 interface AdminOverviewPageProps {
   navigate: (path: string) => void;
@@ -30,12 +31,12 @@ export const AdminOverviewPage: React.FC<AdminOverviewPageProps> = ({ navigate }
     acknowledgeAlert,
   } = useApp();
 
-  const onlineDevicesCount = devices.filter((d) => d.active).length;
+  const onlineDevicesCount = devices.filter((d) => isDeviceConnected(d)).length;
   const assignedDevicesCount = devices.filter((d) => d.assignedDriverUid !== null).length;
 
   // Temperature and humidity averages from active devices
   const onlineWithReadings = devices.filter(
-    (d) => d.active && d.latestTemperatureC !== undefined
+    (d) => isDeviceConnected(d) && d.latestTemperatureC !== undefined
   );
   const avgTemp =
     onlineWithReadings.length > 0
@@ -138,7 +139,7 @@ export const AdminOverviewPage: React.FC<AdminOverviewPageProps> = ({ navigate }
               {devicesWithFansOnCount}
             </span>
             <span className="text-xs text-emerald-700 font-medium">
-              fans · {devicesWithMistOnCount} mist
+              fans · <strong className="font-bold font-mono text-[#2E1826]">{devicesWithMistOnCount}</strong> mist
             </span>
           </div>
           <div className="mt-1 text-[11px] text-[#826674]">

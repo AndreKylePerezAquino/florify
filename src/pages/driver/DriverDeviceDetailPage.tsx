@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { isDeviceConnected } from '../../lib/deviceStatus';
 import { HistoricalChart } from '../../components/common/HistoricalChart';
 import { SensorGauge } from '../../components/common/SensorGauge';
 import { DeviceReading } from '../../types';
@@ -97,7 +98,11 @@ export const DriverDeviceDetailPage: React.FC<DriverDeviceDetailPageProps> = ({ 
             <h1 className="text-xl font-bold tracking-tight text-[#2E1826]">
               {device.displayName}
             </h1>
-            <StatusBadge status={device.status} type="device" />
+            <StatusBadge
+              status={device.status}
+              type="device"
+              isOnline={isDeviceConnected(device)}
+            />
           </div>
           <p className="text-xs font-mono text-[#826674]">
             ID: {device.deviceId} {device.locationLabel && `· ${device.locationLabel}`}
