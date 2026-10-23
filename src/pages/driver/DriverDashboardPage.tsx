@@ -29,9 +29,6 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({ naviga
           <h1 className="text-xl font-bold tracking-tight text-[#2E1826]">
             Driver Shuttle Monitor
           </h1>
-          <p className="text-xs text-[#826674] mt-0.5">
-            Welcome, <strong>{currentDriver?.displayName || 'Driver'}</strong>. Live cabin climate telemetry for your assigned shuttle.
-          </p>
         </div>
 
         {/* Quick Driver Profile Link */}
@@ -75,9 +72,6 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({ naviga
             <h2 className="text-sm font-bold text-[#2E1826]">
               Shuttle Live Location
             </h2>
-            <p className="text-[11px] text-[#826674]">
-              View-only Leaflet map with zoom, movable pan, and real-time device coordinates
-            </p>
           </div>
         </div>
 

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
-import { isDeviceConnected } from '../../lib/deviceStatus';
+import { isDeviceConnected, getDriverGpsStatus } from '../../lib/deviceStatus';
 import { DeviceStatus } from '../../types';
 
 interface AdminDevicesPageProps {
@@ -224,17 +224,45 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
                       {/* Assigned Driver */}
                       <td className="py-3 px-4">
                         {assignedDriver ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-[#2E1826]">{assignedDriver.displayName}</span>
-                            <button
-                              onClick={() => {
-                                setAssigningDeviceId(device.deviceId);
-                                setSelectedDriverForAssign(device.assignedDriverUid || '');
-                              }}
-                              className="text-[10px] text-[#C72C5E] hover:underline"
-                            >
-                              (change)
-                            </button>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-[#2E1826]">{assignedDriver.displayName}</span>
+                              <button
+                                onClick={() => {
+                                  setAssigningDeviceId(device.deviceId);
+                                  setSelectedDriverForAssign(device.assignedDriverUid || '');
+                                }}
+                                className="text-[10px] text-[#C72C5E] hover:underline"
+                              >
+                                (change)
+                              </button>
+                            </div>
+                            <div>
+                              {(() => {
+                                const gps = getDriverGpsStatus(assignedDriver);
+                                if (gps.status === 'CONNECTED') {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                      GPS Connected ({gps.elapsedSeconds}s)
+                                    </span>
+                                  );
+                                }
+                                if (gps.status === 'DISCONNECTED') {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                      GPS Offline ({gps.elapsedSeconds}s)
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
+                                    No GPS Signal
+                                  </span>
+                                );
+                              })()}
+                            </div>
                           </div>
                         ) : (
                           <button

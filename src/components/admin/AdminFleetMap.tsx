@@ -18,7 +18,7 @@ import {
   Navigation,
 } from 'lucide-react';
 import { Device, UserProfile } from '../../types';
-import { isDeviceConnected } from '../../lib/deviceStatus';
+import { isDeviceConnected, isDriverGpsConnected, getDriverGpsStatus } from '../../lib/deviceStatus';
 
 interface AdminFleetMapProps {
   devices: Device[];
@@ -52,8 +52,10 @@ function getVehicleCoordinates(
   driver: UserProfile | undefined,
   index: number
 ): { coords: [number, number]; isLiveGps: boolean; locationLabel: string } {
-  // 1. Live GPS directly from assigned driver mobile device
+  // 1. Live GPS directly from assigned driver mobile device (verified connected within 30s)
+  const isGpsActive = isDriverGpsConnected(driver);
   if (
+    isGpsActive &&
     driver?.currentLocation &&
     typeof driver.currentLocation.latitude === 'number' &&
     typeof driver.currentLocation.longitude === 'number' &&
@@ -364,9 +366,6 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
                 {onlineCount}/{devices.length} Online
               </span>
             </div>
-            <p className="text-[11px] text-[#826674]">
-              Simultaneous live location, DHT11 cabin telemetry, and relay states across the fleet
-            </p>
           </div>
         </div>
 
@@ -463,10 +462,8 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
                 const isOnline = isDeviceConnected(device);
                 const isSelected = selectedDeviceId === device.deviceId;
                 const driver = device.assignedDriverUid ? userMap.get(device.assignedDriverUid) : undefined;
-                const isLiveGps = !!(
-                  driver?.currentLocation &&
-                  typeof driver.currentLocation.latitude === 'number'
-                );
+                const gpsStatus = getDriverGpsStatus(driver);
+                const isLiveGps = gpsStatus.status === 'CONNECTED';
 
                 return (
                   <button
@@ -486,7 +483,15 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
                           ? 'bg-emerald-500 ring-2 ring-emerald-200'
                           : 'bg-slate-400'
                       }`}
-                      title={isLiveGps ? 'Live Driver Mobile GPS Active' : isOnline ? 'Online' : 'Offline'}
+                      title={
+                        isLiveGps
+                          ? `Live GPS Connected (${gpsStatus.elapsedSeconds}s ago)`
+                          : driver
+                          ? gpsStatus.label
+                          : isOnline
+                          ? 'Vehicle Online (No Driver)'
+                          : 'Vehicle Offline'
+                      }
                     />
                     <span className="font-semibold">
                       {device.displayName || device.deviceId}
@@ -497,10 +502,18 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
                           ? 'bg-white/20 text-white'
                           : isLiveGps
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : driver
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
                           : 'bg-[#FFF7F9] text-[#826674] border border-[#FDC3D1]/50'
                       }`}
+                      title={gpsStatus.label}
                     >
                       {driver?.displayName || 'Unassigned'}
+                      {driver && (
+                        <span className="ml-1 opacity-80 font-medium text-[9px]">
+                          {isLiveGps ? '• Live' : '• Offline'}
+                        </span>
+                      )}
                     </span>
                   </button>
                 );
