@@ -104,7 +104,7 @@ export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) =>
     });
 
     // CartoDB Positron clean light tile layer
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_4sgr_1_09973f1bac54cf99384e35ac', {
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
       subdomains: 'abcd',
