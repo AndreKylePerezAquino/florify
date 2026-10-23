@@ -13,15 +13,18 @@ import {
   Maximize2,
   Minimize2,
   Gauge,
-  CheckCircle2
+  CheckCircle2,
+  Maximize,
+  LocateFixed
 } from 'lucide-react';
 
 interface Waypoint {
   id: string;
   name: string;
+  shortName: string;
   code: string;
-  x: number; // percentage in SVG coordinates (0 - 1000)
-  y: number; // percentage in SVG coordinates (0 - 600)
+  x: number; // coordinate in SVG (0 - 1000)
+  y: number; // coordinate in SVG (0 - 600)
   distanceKm: number;
   estMinutes: number;
   description: string;
@@ -32,6 +35,7 @@ const WAYPOINTS: Waypoint[] = [
   {
     id: 'wp-1',
     name: 'Main Fleet Depot',
+    shortName: 'Depot',
     code: 'A',
     x: 120,
     y: 470,
@@ -43,6 +47,7 @@ const WAYPOINTS: Waypoint[] = [
   {
     id: 'wp-2',
     name: 'Passenger Terminal A',
+    shortName: 'Term A',
     code: 'B',
     x: 290,
     y: 310,
@@ -54,6 +59,7 @@ const WAYPOINTS: Waypoint[] = [
   {
     id: 'wp-3',
     name: 'University Medical Hub',
+    shortName: 'Med Hub',
     code: 'C',
     x: 480,
     y: 200,
@@ -65,6 +71,7 @@ const WAYPOINTS: Waypoint[] = [
   {
     id: 'wp-4',
     name: 'Science Park Gateway',
+    shortName: 'Sci Park',
     code: 'D',
     x: 740,
     y: 260,
@@ -76,6 +83,7 @@ const WAYPOINTS: Waypoint[] = [
   {
     id: 'wp-5',
     name: 'South Transfer Station',
+    shortName: 'South Stn',
     code: 'E',
     x: 880,
     y: 440,
@@ -133,7 +141,6 @@ const getPointAtProgress = (progress: number) => {
       const p2 = ROUTE_PATH_POINTS[i];
       const x = p1.x + (p2.x - p1.x) * t;
       const y = p1.y + (p2.y - p1.y) * t;
-      // Calculate angle in degrees
       const angle = (Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180) / Math.PI;
       return { x, y, angle };
     }
@@ -158,9 +165,13 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
   const [showTraffic, setShowTraffic] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [selectedWaypoint, setSelectedWaypoint] = useState<Waypoint | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // Drag to pan state
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Animation frame loop for smooth driving simulation
@@ -209,6 +220,60 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
     setIsPlaying(false);
     setProgress(0.0);
     setSelectedWaypoint(null);
+    setPanOffset({ x: 0, y: 0 });
+    setZoomLevel(1);
+  };
+
+  // Center on Vehicle
+  const handleCenterVehicle = () => {
+    setZoomLevel(1.3);
+    // Center pan offset towards vehicle relative to center (500, 300)
+    const offsetX = (500 - vehicleState.x) * 0.4;
+    const offsetY = (300 - vehicleState.y) * 0.4;
+    setPanOffset({ x: offsetX, y: offsetY });
+  };
+
+  // Fit Complete Route
+  const handleFitRoute = () => {
+    setZoomLevel(1);
+    setPanOffset({ x: 0, y: 0 });
+  };
+
+  // Drag & Pan Handlers (Supports Mouse and Mobile Touch)
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Only drag with primary pointer
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      panX: panOffset.x,
+      panY: panOffset.y,
+    };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    // Limit pan boundaries based on zoom
+    const maxPan = 300 * Math.max(1, zoomLevel);
+    setPanOffset({
+      x: Math.max(-maxPan, Math.min(maxPan, dragStartRef.current.panX + dx)),
+      y: Math.max(-maxPan, Math.min(maxPan, dragStartRef.current.panY + dy)),
+    });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDragging) {
+      setIsDragging(false);
+      try {
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+    }
   };
 
   // SVG route path string
@@ -220,39 +285,39 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
     <div
       ref={containerRef}
       className={`bg-white rounded-2xl border border-[#FDC3D1] shadow-xs overflow-hidden transition-all duration-300 ${
-        isFullscreen ? 'fixed inset-4 z-50 shadow-2xl flex flex-col' : 'relative'
+        isFullscreen ? 'fixed inset-2 sm:inset-4 z-50 shadow-2xl flex flex-col' : 'relative'
       }`}
     >
-      {/* Top Google Maps Style Header Bar */}
-      <div className="bg-[#FFF7F9] border-b border-[#FDC3D1] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      {/* Top Google Maps Style Header Bar (Optimized for Mobile Screens) */}
+      <div className="bg-[#FFF7F9] border-b border-[#FDC3D1] p-2.5 sm:px-4 sm:py-3 flex flex-col xs:flex-row xs:items-center justify-between gap-2.5">
+        <div className="flex items-center justify-between xs:justify-start gap-2 sm:gap-3">
           {/* Mock Google Search / Route Badge */}
-          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-[#FDC3D1] shadow-2xs">
-            <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <div className="text-left">
-              <span className="text-[11px] font-bold text-[#2E1826] block">
-                {shuttleName} • Campus Line Express
+          <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-xl border border-[#FDC3D1] shadow-2xs min-w-0">
+            <span className="flex h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <div className="text-left truncate">
+              <span className="text-[11px] font-bold text-[#2E1826] block truncate">
+                {shuttleName} • Transit Line 4
               </span>
-              <span className="text-[10px] text-[#826674] block font-mono">
-                {licensePlate} • Next: {nextWaypoint.name}
+              <span className="text-[9px] sm:text-[10px] text-[#826674] block font-mono truncate">
+                Next: {nextWaypoint.name}
               </span>
             </div>
           </div>
 
           {/* Route Distance & ETA Pill */}
-          <div className="hidden sm:flex items-center gap-1.5 text-xs bg-white px-2.5 py-1 rounded-lg border border-[#FCE7ED] text-[#C72C5E] font-medium">
-            <Clock className="w-3.5 h-3.5" />
-            <span>ETA {etaMinutes} min ({remainingKm} km left)</span>
+          <div className="flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-xs bg-white px-2 py-1.5 rounded-xl border border-[#FCE7ED] text-[#C72C5E] font-semibold shrink-0">
+            <Clock className="w-3 h-3 text-[#C72C5E]" />
+            <span>ETA {etaMinutes}m ({remainingKm}km)</span>
           </div>
         </div>
 
         {/* Top Right Map Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-end gap-1.5 sm:gap-2">
           {/* Map Layer Switcher */}
-          <div className="inline-flex rounded-lg border border-[#FDC3D1] bg-white p-0.5 text-[11px] font-semibold text-[#826674]">
+          <div className="inline-flex rounded-lg border border-[#FDC3D1] bg-white p-0.5 text-[10px] sm:text-[11px] font-semibold text-[#826674]">
             <button
               onClick={() => setMapType('roadmap')}
-              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md transition-colors cursor-pointer ${
                 mapType === 'roadmap'
                   ? 'bg-[#C72C5E] text-white shadow-2xs'
                   : 'hover:text-[#2E1826]'
@@ -262,13 +327,13 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
             </button>
             <button
               onClick={() => setMapType('satellite')}
-              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md transition-colors cursor-pointer ${
                 mapType === 'satellite'
                   ? 'bg-[#C72C5E] text-white shadow-2xs'
                   : 'hover:text-[#2E1826]'
               }`}
             >
-              Satellite
+              Sat
             </button>
           </div>
 
@@ -276,41 +341,57 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
           <button
             onClick={() => setShowTraffic(!showTraffic)}
             title="Toggle Live Traffic Layer"
-            className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-colors cursor-pointer flex items-center gap-1 ${
+            className={`px-2 py-1 sm:px-2.5 rounded-lg border text-[10px] sm:text-[11px] font-semibold transition-colors cursor-pointer flex items-center gap-1 ${
               showTraffic
                 ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
                 : 'border-[#FDC3D1] bg-white text-[#826674] hover:text-[#2E1826]'
             }`}
           >
             <Layers className="w-3 h-3 text-emerald-600" />
-            <span className="hidden md:inline">Traffic</span>
+            <span>Traffic</span>
           </button>
 
           {/* Fullscreen Toggle */}
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-1.5 rounded-lg border border-[#FDC3D1] bg-white hover:bg-[#FFF7F9] text-[#826674] hover:text-[#2E1826] transition-colors cursor-pointer"
+            className="p-1 sm:p-1.5 rounded-lg border border-[#FDC3D1] bg-white hover:bg-[#FFF7F9] text-[#826674] hover:text-[#2E1826] transition-colors cursor-pointer"
             title={isFullscreen ? 'Exit Fullscreen' : 'Expand Map'}
           >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
           </button>
         </div>
       </div>
 
-      {/* Interactive Map Viewport */}
-      <div className={`relative w-full overflow-hidden select-none ${isFullscreen ? 'flex-1 min-h-[420px]' : 'h-[360px] sm:h-[410px]'}`}>
-        {/* Canvas / SVG Map Background */}
+      {/* Interactive Map Viewport (Mobile-Friendly aspect ratio & drag-to-pan touch-none) */}
+      <div
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        className={`relative w-full overflow-hidden select-none bg-[#F4F3F0] touch-none cursor-grab active:cursor-grabbing ${
+          isFullscreen
+            ? 'flex-1 min-h-[300px]'
+            : 'aspect-[16/10] sm:aspect-[16/9] min-h-[260px] max-h-[460px]'
+        }`}
+      >
+        {/* Canvas / SVG Map Background with Zoom & Pan */}
         <div
-          className="w-full h-full relative transition-transform duration-200"
+          className="w-full h-full relative transition-transform duration-100 ease-out"
           style={{
-            transform: `scale(${zoomLevel})`,
-            transformOrigin: `${(vehicleState.x / 1000) * 100}% ${(vehicleState.y / 600) * 100}%`
+            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`,
+            transformOrigin: '50% 50%'
           }}
         >
+          {/*
+            CRITICAL MOBILE FIX:
+            Use preserveAspectRatio="xMidYMid meet" so that the complete 1000x600 viewBox
+            (including all waypoints from Stop A at x:120 to Stop E at x:880) is ALWAYS 100% visible
+            and never cut off on phone screens!
+          */}
           <svg
             viewBox="0 0 1000 600"
-            className="w-full h-full object-cover"
-            preserveAspectRatio="xMidYMid slice"
+            className="w-full h-full"
+            preserveAspectRatio="xMidYMid meet"
           >
             {/* Defs for gradients, patterns, and filters */}
             <defs>
@@ -399,7 +480,7 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
               <line x1="800" y1="0" x2="800" y2="600" />
             </g>
 
-            {/* Live Traffic Overlay (Green for fast, Orange for moderate) */}
+            {/* Live Traffic Overlay */}
             {showTraffic && (
               <g strokeWidth="4" strokeLinecap="round" fill="none" opacity="0.85">
                 <line x1="20" y1="310" x2="350" y2="310" stroke="#0F9D58" />
@@ -430,7 +511,7 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
               <rect x="820" y="460" width="45" height="30" rx="2" />
             </g>
 
-            {/* Route Outer Border (Google Maps Route Outline) */}
+            {/* Route Outer Border (White Outline) */}
             <path
               d={pathD}
               fill="none"
@@ -451,7 +532,7 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
               strokeLinejoin="round"
             />
 
-            {/* Traveled Route Segment (Subdued color for completed road) */}
+            {/* Traveled Route Segment (Green Progress Line) */}
             <path
               d={pathD}
               fill="none"
@@ -472,14 +553,17 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
                   key={wp.id}
                   transform={`translate(${wp.x}, ${wp.y})`}
                   className="cursor-pointer group"
-                  onClick={() => setSelectedWaypoint(wp)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedWaypoint(wp);
+                  }}
                 >
                   {/* Waypoint Ripple Ring on Active or Selected */}
                   {isSelected && (
                     <circle
                       r="22"
                       fill="#EA4335"
-                      opacity="0.25"
+                      opacity="0.3"
                       className="animate-ping"
                     />
                   )}
@@ -508,11 +592,11 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
                   {/* Stop Label Banner */}
                   <g transform="translate(0, 10)">
                     <rect
-                      x="-55"
+                      x="-48"
                       y="0"
-                      width="110"
-                      height="18"
-                      rx="9"
+                      width="96"
+                      height="17"
+                      rx="8.5"
                       fill="#FFFFFF"
                       stroke="#E5E7EB"
                       strokeWidth="1"
@@ -520,13 +604,13 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
                     />
                     <text
                       x="0"
-                      y="12"
+                      y="11.5"
                       textAnchor="middle"
-                      fontSize="9"
+                      fontSize="8.5"
                       fontWeight="bold"
                       fill="#1F2937"
                     >
-                      {wp.name.length > 17 ? `${wp.name.slice(0, 15)}...` : wp.name}
+                      {wp.shortName}
                     </text>
                   </g>
                 </g>
@@ -596,34 +680,37 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
           </svg>
         </div>
 
-        {/* Selected Waypoint Info Floating Card */}
+        {/* Selected Waypoint Info Floating Card (Responsive on phone) */}
         {selectedWaypoint && (
-          <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-md rounded-xl p-3 shadow-lg border border-[#FDC3D1] max-w-xs z-20 animate-in fade-in slide-in-from-top-2">
+          <div className="absolute top-2 left-2 right-2 sm:right-auto sm:max-w-xs bg-white/95 backdrop-blur-md rounded-xl p-3 shadow-lg border border-[#FDC3D1] z-20 animate-in fade-in slide-in-from-top-2">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#EA4335] text-white text-[10px] font-bold">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#EA4335] text-white text-[10px] font-bold shrink-0">
                   {selectedWaypoint.code}
                 </span>
-                <h4 className="text-xs font-bold text-[#2E1826]">
+                <h4 className="text-xs font-bold text-[#2E1826] truncate">
                   {selectedWaypoint.name}
                 </h4>
               </div>
               <button
-                onClick={() => setSelectedWaypoint(null)}
-                className="text-[#826674] hover:text-[#2E1826] text-xs font-bold px-1"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedWaypoint(null);
+                }}
+                className="text-[#826674] hover:text-[#2E1826] text-xs font-bold p-1 cursor-pointer"
               >
                 ✕
               </button>
             </div>
-            <p className="text-[11px] text-[#826674] mt-1 leading-relaxed">
+            <p className="text-[10px] sm:text-[11px] text-[#826674] mt-1 leading-relaxed">
               {selectedWaypoint.description}
             </p>
-            <div className="mt-2.5 pt-2 border-t border-[#FCE7ED] flex items-center justify-between text-[11px] font-medium text-[#2E1826]">
+            <div className="mt-2 pt-1.5 border-t border-[#FCE7ED] flex items-center justify-between text-[10px] sm:text-[11px] font-medium text-[#2E1826]">
               <span className="flex items-center gap-1 text-[#C72C5E]">
                 <MapPin className="w-3 h-3" />
                 {selectedWaypoint.distanceKm} km from Depot
               </span>
-              <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-semibold">
+              <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-semibold text-[10px]">
                 {selectedWaypoint.passengersWaiting} waiting
               </span>
             </div>
@@ -631,8 +718,8 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
         )}
 
         {/* Google Maps Bottom-Left Watermark */}
-        <div className="absolute bottom-3 left-4 select-none pointer-events-none flex items-center gap-1 bg-white/70 backdrop-blur-2xs px-2 py-0.5 rounded shadow-2xs">
-          <span className="font-bold text-xs tracking-tighter" style={{ fontFamily: 'Roboto, Arial, sans-serif' }}>
+        <div className="absolute bottom-2.5 left-2.5 sm:left-4 select-none pointer-events-none flex items-center gap-1 bg-white/80 backdrop-blur-2xs px-2 py-0.5 rounded shadow-2xs">
+          <span className="font-bold text-[11px] sm:text-xs tracking-tighter" style={{ fontFamily: 'Roboto, Arial, sans-serif' }}>
             <span style={{ color: '#4285F4' }}>G</span>
             <span style={{ color: '#EA4335' }}>o</span>
             <span style={{ color: '#FBBC05' }}>o</span>
@@ -640,50 +727,58 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
             <span style={{ color: '#34A853' }}>l</span>
             <span style={{ color: '#EA4335' }}>e</span>
           </span>
-          <span className="text-[9px] text-gray-500 font-medium ml-1">Mock Map</span>
+          <span className="text-[8px] sm:text-[9px] text-gray-500 font-medium ml-1">Mock Map</span>
         </div>
 
-        {/* Google Maps Bottom-Right Controls (+, -, Recenter) */}
-        <div className="absolute bottom-3 right-4 flex flex-col gap-1.5 z-10">
+        {/* Google Maps Bottom-Right Navigation Controls (Zoom, Fit Route, Recenter) */}
+        <div className="absolute bottom-2.5 right-2.5 sm:right-4 flex flex-col gap-1.5 z-10">
+          {/* Fit Complete Route (Crucial for Mobile!) */}
           <button
-            onClick={() => {
-              // Recenter view on vehicle
-              setZoomLevel(1);
-            }}
-            className="w-8 h-8 rounded-lg bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors"
-            title="Recenter on Shuttle"
+            onClick={handleFitRoute}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors"
+            title="Fit Complete Route"
           >
-            <Compass className="w-4 h-4 text-[#C72C5E]" />
+            <Maximize className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#826674]" />
           </button>
 
+          {/* Recenter on Shuttle */}
+          <button
+            onClick={handleCenterVehicle}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors"
+            title="Center on Shuttle"
+          >
+            <LocateFixed className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#C72C5E]" />
+          </button>
+
+          {/* Zoom In & Out */}
           <div className="flex flex-col bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <button
-              onClick={() => setZoomLevel((z) => Math.min(1.6, z + 0.15))}
-              className="w-8 h-8 flex items-center justify-center text-gray-700 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+              onClick={() => setZoomLevel((z) => Math.min(2.0, z + 0.2))}
+              className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-gray-700 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
               title="Zoom In"
             >
-              <ZoomIn className="w-4 h-4" />
+              <ZoomIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
             <button
-              onClick={() => setZoomLevel((z) => Math.max(0.85, z - 0.15))}
-              className="w-8 h-8 flex items-center justify-center text-gray-700 hover:bg-gray-50 cursor-pointer"
+              onClick={() => setZoomLevel((z) => Math.max(0.8, z - 0.2))}
+              className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-gray-700 hover:bg-gray-50 cursor-pointer"
               title="Zoom Out"
             >
-              <ZoomOut className="w-4 h-4" />
+              <ZoomOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Simulation Controls Bar (Play, Pause, Reset, Scrubber) */}
-      <div className="bg-[#FFF7F9] border-t border-[#FDC3D1] p-3.5 sm:px-5 space-y-3">
-        {/* Top Control Strip */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Main Action Buttons: Play/Pause, Reset */}
-          <div className="flex items-center gap-2">
+      {/* Simulation Controls Bar (Play, Pause, Reset, Scrubber, Mobile Waypoint Bar) */}
+      <div className="bg-[#FFF7F9] border-t border-[#FDC3D1] p-3 sm:px-5 space-y-2.5">
+        {/* Main Action Buttons Strip */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Play/Pause & Reset */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => setIsPlaying(!isPlaying)}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white shadow-xs transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-bold text-white shadow-xs transition-colors cursor-pointer ${
                 isPlaying
                   ? 'bg-amber-600 hover:bg-amber-700'
                   : 'bg-[#C72C5E] hover:bg-[#A9224E]'
@@ -692,19 +787,19 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
               {isPlaying ? (
                 <>
                   <Pause className="w-3.5 h-3.5 fill-current" />
-                  <span>Pause Route</span>
+                  <span>Pause</span>
                 </>
               ) : (
                 <>
                   <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>{progress >= 0.99 ? 'Replay Route' : 'Drive Route'}</span>
+                  <span>{progress >= 0.99 ? 'Replay' : 'Drive Route'}</span>
                 </>
               )}
             </button>
 
             <button
               onClick={handleReset}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white border border-[#FDC3D1] hover:bg-white/80 text-[#2E1826] shadow-2xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-semibold bg-white border border-[#FDC3D1] hover:bg-white/80 text-[#2E1826] shadow-2xs transition-colors cursor-pointer"
               title="Reset shuttle position to Depot"
             >
               <RotateCcw className="w-3.5 h-3.5 text-[#826674]" />
@@ -717,7 +812,7 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
                 <button
                   key={mult}
                   onClick={() => setSpeedMultiplier(mult)}
-                  className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                  className={`px-2 py-1 rounded-lg transition-colors cursor-pointer text-[11px] ${
                     speedMultiplier === mult
                       ? 'bg-[#C72C5E] text-white shadow-2xs'
                       : 'text-[#826674] hover:text-[#2E1826]'
@@ -730,32 +825,30 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
           </div>
 
           {/* Real-time Telemetry Mini-Badges */}
-          <div className="flex items-center gap-2.5 text-xs">
-            <div className="flex items-center gap-1.5 bg-white border border-[#FDC3D1] px-2.5 py-1.5 rounded-xl font-medium text-[#2E1826]">
-              <Gauge className="w-3.5 h-3.5 text-[#C72C5E]" />
-              <span>{simulatedSpeed} km/h</span>
+          <div className="flex items-center gap-1.5 sm:gap-2 text-xs">
+            <div className="flex items-center gap-1 bg-white border border-[#FDC3D1] px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl font-medium text-[#2E1826]">
+              <Gauge className="w-3 h-3 text-[#C72C5E]" />
+              <span className="text-[11px] sm:text-xs font-semibold">{simulatedSpeed} km/h</span>
             </div>
 
-            <div className="flex items-center gap-1.5 bg-white border border-[#FDC3D1] px-2.5 py-1.5 rounded-xl font-medium text-[#2E1826]">
-              <Navigation className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{currentKm} / {totalKm} km</span>
+            <div className="flex items-center gap-1 bg-white border border-[#FDC3D1] px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl font-medium text-[#2E1826]">
+              <Navigation className="w-3 h-3 text-emerald-600" />
+              <span className="text-[11px] sm:text-xs font-semibold">{currentKm}/{totalKm} km</span>
             </div>
           </div>
         </div>
 
         {/* Route Scrubber & Stop Sequence */}
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-[11px] font-semibold text-[#826674]">
-            <span className="flex items-center gap-1">
-              <span>Origin:</span>
-              <strong className="text-[#2E1826]">Depot (Stop A)</strong>
+          <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-semibold text-[#826674]">
+            <span className="truncate">
+              Start: <strong className="text-[#2E1826]">Depot (A)</strong>
             </span>
-            <span>
-              Route Progress: <strong>{Math.round(progress * 100)}%</strong>
+            <span className="shrink-0 px-1">
+              Progress: <strong className="text-[#C72C5E]">{Math.round(progress * 100)}%</strong>
             </span>
-            <span className="flex items-center gap-1">
-              <span>Terminus:</span>
-              <strong className="text-[#2E1826]">South Transfer (Stop E)</strong>
+            <span className="truncate text-right">
+              End: <strong className="text-[#2E1826]">South Stn (E)</strong>
             </span>
           </div>
 
@@ -773,8 +866,8 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
             />
           </div>
 
-          {/* Quick Waypoint Jump Pills */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-1">
+          {/* Mobile-Friendly Waypoint Sequence Bar (All 5 stops visible and accessible on phones) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 no-scrollbar sm:grid sm:grid-cols-5">
             {WAYPOINTS.map((wp) => {
               const isCurrentOrPassed = currentKm >= wp.distanceKm;
               return (
@@ -784,7 +877,7 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
                     setProgress(wp.distanceKm / totalKm);
                     setSelectedWaypoint(wp);
                   }}
-                  className={`text-left px-2 py-1 rounded-lg border text-[10px] transition-colors cursor-pointer ${
+                  className={`shrink-0 sm:shrink text-left px-2 py-1 rounded-lg border text-[10px] transition-colors cursor-pointer ${
                     isCurrentOrPassed
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-900 font-semibold'
                       : 'border-[#FDC3D1] bg-white text-[#826674] hover:bg-[#FFF7F9]'
@@ -798,7 +891,7 @@ export const MockShuttleMap: React.FC<MockShuttleMapProps> = ({
                         {wp.code}
                       </span>
                     )}
-                    <span className="truncate">{wp.name}</span>
+                    <span className="truncate font-medium">{wp.shortName}</span>
                   </div>
                 </button>
               );
