@@ -15,6 +15,7 @@ import { useApp } from '../../context/AppContext';
 import { DeviceCard } from '../../components/common/DeviceCard';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { isDeviceConnected } from '../../lib/deviceStatus';
+import { AdminFleetMap } from '../../components/admin/AdminFleetMap';
 
 interface AdminOverviewPageProps {
   navigate: (path: string) => void;
@@ -166,6 +167,13 @@ export const AdminOverviewPage: React.FC<AdminOverviewPageProps> = ({ navigate }
           </div>
         </div>
       </div>
+
+      {/* Live Fleet GPS & Telemetry Tracking Map */}
+      <AdminFleetMap
+        devices={devices}
+        allUsers={allUsers}
+        navigate={navigate}
+      />
 
       {/* Main Devices Grid */}
       <div className="space-y-4">
