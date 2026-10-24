@@ -121,6 +121,12 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const [filterMode, setFilterMode] = useState<'ALL' | 'ONLINE' | 'ALERT'>('ALL');
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const hasFittedRef = useRef<boolean>(false);
+
+  // Reset initial fit when filter mode changes
+  useEffect(() => {
+    hasFittedRef.current = false;
+  }, [filterMode]);
 
   // 5-second auto-refresh heartbeat to re-evaluate real-time GPS connection freshness
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
@@ -319,14 +325,20 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
         </div>
       `);
 
+      // Clicking marker zooms in to driver location at zoom level 16
+      marker.on('click', () => {
+        focusDeviceOnMap(device.deviceId);
+      });
+
       markersMapRef.current.set(device.deviceId, marker);
     });
 
-    // Auto-fit bounds if we have points and not currently focusing on a specific device
-    if (boundsPoints.length > 0 && !selectedDeviceId) {
+    // Auto-fit bounds only on initial load or filter change if not already fitted and no specific device selected
+    if (boundsPoints.length > 0 && !selectedDeviceId && !hasFittedRef.current) {
       try {
         const bounds = L.latLngBounds(boundsPoints);
         map.fitBounds(bounds, { padding: [45, 45], maxZoom: 15 });
+        hasFittedRef.current = true;
       } catch (e) {
         console.warn('Map fitBounds error:', e);
       }
@@ -360,6 +372,7 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
 
     if (points.length > 0) {
       map.fitBounds(L.latLngBounds(points), { padding: [45, 45], maxZoom: 15 });
+      hasFittedRef.current = true;
     }
   };
 
