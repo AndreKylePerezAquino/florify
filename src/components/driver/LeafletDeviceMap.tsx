@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -7,7 +7,11 @@ import {
   Thermometer,
   Droplets,
   Radio,
-  MapPin
+  MapPin,
+  AlertTriangle,
+  RefreshCw,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { Device } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -20,23 +24,52 @@ interface LeafletDeviceMapProps {
 const DEFAULT_FALLBACK_COORDS: [number, number] = [14.5995, 120.9842];
 
 export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) => {
-  const { updateDriverLocation, userProfile } = useApp();
+  const { updateDriverLocation, setDriverGpsOffline, userProfile } = useApp();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const accuracyCircleRef = useRef<L.Circle | null>(null);
+  const watchIdRef = useRef<number | null>(null);
 
   const [coords, setCoords] = useState<[number, number]>(DEFAULT_FALLBACK_COORDS);
   const [locationSource, setLocationSource] = useState<'GPS' | 'FALLBACK'>('FALLBACK');
   const [accuracyMeters, setAccuracyMeters] = useState<number | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
 
-  // Initialize and watch device / browser GPS location
-  useEffect(() => {
-    let watchId: number | null = null;
+  // Web connectivity detection
+  const [isWebOnline, setIsWebOnline] = useState<boolean>(
+    () => (typeof navigator !== 'undefined' ? navigator.onLine : true)
+  );
 
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
+  // Auto-retry state for 10-second polling
+  const [isRetryingGps, setIsRetryingGps] = useState<boolean>(false);
+  const [countdown, setCountdown] = useState<number>(10);
+
+  // Listen to web online / offline events
+  useEffect(() => {
+    const handleOnline = () => setIsWebOnline(true);
+    const handleOffline = () => setIsWebOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Continuous watchPosition starter
+  const startContinuousWatch = useCallback(() => {
+    if (!('geolocation' in navigator)) return;
+
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+
+    try {
+      watchIdRef.current = navigator.geolocation.watchPosition(
         (position) => {
           const newCoords: [number, number] = [
             position.coords.latitude,
@@ -56,16 +89,37 @@ export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) =>
           }
         },
         (err) => {
-          console.warn('Geolocation unavailable, using vehicle fallback:', err.message);
-          setGpsError(err.message);
+          console.warn('Geolocation watch error / GPS turned off:', err.message);
+          setGpsError(err.message || 'GPS Signal Off');
           setLocationSource('FALLBACK');
+          if (userProfile?.role === 'DRIVER') {
+            setDriverGpsOffline();
+          }
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
       );
+    } catch (e) {
+      console.warn('WatchPosition error:', e);
+    }
+  }, [updateDriverLocation, setDriverGpsOffline, userProfile]);
 
-      // Continuous position watch
-      watchId = navigator.geolocation.watchPosition(
+  // Method to query GPS position immediately or on periodic 10-second retry
+  const acquireGpsPosition = useCallback(
+    (isManual = false) => {
+      if (!('geolocation' in navigator)) {
+        setGpsError('Browser geolocation not supported on this device');
+        setLocationSource('FALLBACK');
+        if (userProfile?.role === 'DRIVER') {
+          setDriverGpsOffline();
+        }
+        return;
+      }
+
+      setIsRetryingGps(true);
+
+      navigator.geolocation.getCurrentPosition(
         (position) => {
+          setIsRetryingGps(false);
           const newCoords: [number, number] = [
             position.coords.latitude,
             position.coords.longitude,
@@ -73,6 +127,8 @@ export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) =>
           setCoords(newCoords);
           setLocationSource('GPS');
           setAccuracyMeters(Math.round(position.coords.accuracy));
+          setGpsError(null);
+          setCountdown(10);
 
           if (userProfile?.role === 'DRIVER') {
             updateDriverLocation({
@@ -81,23 +137,68 @@ export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) =>
               accuracy: position.coords.accuracy,
             });
           }
+
+          if (isManual && mapInstanceRef.current) {
+            mapInstanceRef.current.flyTo(newCoords, 16, { duration: 1.0 });
+          }
+
+          // Ensure continuous watcher is active
+          startContinuousWatch();
         },
-        () => {
-          // Keep current coords on transient watch error
+        (err) => {
+          setIsRetryingGps(false);
+          const message =
+            err.code === err.PERMISSION_DENIED
+              ? 'Location permission blocked'
+              : err.code === err.POSITION_UNAVAILABLE
+              ? 'GPS service is turned off on device'
+              : 'GPS location request timed out';
+          setGpsError(message);
+          setLocationSource('FALLBACK');
+          if (userProfile?.role === 'DRIVER') {
+            setDriverGpsOffline();
+          }
         },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
       );
-    } else {
-      setGpsError('Browser geolocation not supported');
-      setLocationSource('FALLBACK');
-    }
+    },
+    [updateDriverLocation, setDriverGpsOffline, userProfile, startContinuousWatch]
+  );
+
+  // Initial GPS lock on mount
+  useEffect(() => {
+    acquireGpsPosition(false);
 
     return () => {
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      if (userProfile?.role === 'DRIVER') {
+        setDriverGpsOffline();
       }
     };
-  }, [updateDriverLocation, userProfile]);
+  }, [acquireGpsPosition, setDriverGpsOffline, userProfile]);
+
+  // Automatic 10-second GPS rechecking loop when GPS is disconnected / off
+  useEffect(() => {
+    if (locationSource === 'GPS') {
+      setCountdown(10);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          acquireGpsPosition(false);
+          return 10;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [locationSource, acquireGpsPosition]);
 
   // Initialize Leaflet Map
   useEffect(() => {
@@ -232,102 +333,171 @@ export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) =>
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-[#FDC3D1] shadow-xs overflow-hidden">
-      {/* Map Header Status Bar */}
-      <div className="bg-[#FFF7F9] border-b border-[#FDC3D1] px-3.5 py-2.5 sm:px-4 sm:py-3 flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-xl border border-[#FDC3D1] shadow-2xs">
-            <span
-              className={`flex h-2.5 w-2.5 rounded-full ${
-                locationSource === 'GPS'
-                  ? 'bg-emerald-500 animate-pulse'
-                  : 'bg-blue-500'
-              }`}
-            />
-            <div className="text-left truncate">
-              <span className="text-xs font-bold text-[#2E1826] block truncate">
-                {device?.displayName || 'Assigned Shuttle'}
-              </span>
-              <span className="text-[10px] text-[#826674] block font-mono">
-                {coords[0].toFixed(4)}°, {coords[1].toFixed(4)}° •{' '}
-                {locationSource === 'GPS' ? 'Live GPS' : 'Station Coordinates'}
-              </span>
+    <div className="space-y-3">
+      {/* Amber Alert Banner: Web is Connected but GPS is Off / Signal Lost */}
+      {isWebOnline && locationSource !== 'GPS' && (
+        <div className="bg-amber-50/95 border border-amber-300 rounded-2xl p-4 text-amber-950 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-amber-100 text-amber-700 shrink-0 mt-0.5 sm:mt-0">
+              <AlertTriangle className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-bold text-xs sm:text-sm text-amber-950">
+                  Web Connected • GPS Signal Off
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                  Web Online
+                </span>
+              </div>
+              <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                {gpsError ? `${gpsError}. ` : ''}
+                Shuttle live location tracking is paused because device location is turned off or blocked. Auto-rechecking every 10s (next retry in {countdown}s).
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setCountdown(10);
+              acquireGpsPosition(true);
+            }}
+            disabled={isRetryingGps}
+            className="self-end sm:self-auto inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors shrink-0 disabled:opacity-60 cursor-pointer"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isRetryingGps ? 'animate-spin' : ''}`} />
+            <span>{isRetryingGps ? 'Checking GPS...' : 'Recheck GPS Now'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Main Map Card */}
+      <div className="bg-white rounded-2xl border border-[#FDC3D1] shadow-xs overflow-hidden">
+        {/* Map Header Status Bar */}
+        <div className="bg-[#FFF7F9] border-b border-[#FDC3D1] px-3.5 py-2.5 sm:px-4 sm:py-3 flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-xl border border-[#FDC3D1] shadow-2xs">
+              <span
+                className={`flex h-2.5 w-2.5 rounded-full ${
+                  locationSource === 'GPS'
+                    ? 'bg-emerald-500 animate-pulse'
+                    : isWebOnline
+                    ? 'bg-amber-500 animate-ping'
+                    : 'bg-slate-400'
+                }`}
+              />
+              <div className="text-left truncate">
+                <span className="text-xs font-bold text-[#2E1826] block truncate">
+                  {device?.displayName || 'Assigned Shuttle'}
+                </span>
+                <span className="text-[10px] text-[#826674] block font-mono">
+                  {locationSource === 'GPS' ? (
+                    <span className="text-emerald-700 font-semibold">
+                      {coords[0].toFixed(4)}°, {coords[1].toFixed(4)}° • Live GPS
+                    </span>
+                  ) : isWebOnline ? (
+                    <span className="text-amber-700 font-medium">
+                      Station Coords • GPS Off (Retry in {countdown}s)
+                    </span>
+                  ) : (
+                    <span>Station Coords • Offline</span>
+                  )}
+                </span>
+              </div>
+            </div>
+
+            {/* Location & Web status badge */}
+            <div className="hidden xs:flex items-center gap-1.5 text-xs bg-white px-2.5 py-1 rounded-lg border border-[#FCE7ED] font-medium">
+              {locationSource === 'GPS' ? (
+                <>
+                  <Radio className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                  <span className="text-emerald-700 font-semibold text-[11px]">
+                    Live GPS Synced {accuracyMeters ? `(±${accuracyMeters}m)` : ''} • Web Online
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="flex h-2 w-2 rounded-full bg-emerald-500" title="Web Connected" />
+                  <span className="text-amber-800 font-semibold text-[11px]">
+                    {isWebOnline ? 'Web Online • GPS Off' : 'Web Offline'}
+                  </span>
+                  {isWebOnline && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCountdown(10);
+                        acquireGpsPosition(true);
+                      }}
+                      disabled={isRetryingGps}
+                      className="ml-1 text-[10px] text-[#C72C5E] hover:underline font-semibold cursor-pointer"
+                    >
+                      {isRetryingGps ? 'Checking...' : 'Recheck'}
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
-          {/* Location status badge */}
-          <div className="hidden xs:flex items-center gap-1.5 text-xs bg-white px-2.5 py-1 rounded-lg border border-[#FCE7ED] text-[#C72C5E] font-medium">
-            {locationSource === 'GPS' ? (
-              <>
-                <Radio className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-                <span className="text-emerald-700 font-semibold text-[11px]">
-                  GPS Synced {accuracyMeters ? `(±${accuracyMeters}m)` : ''}
-                </span>
-              </>
-            ) : (
-              <>
-                <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                <span className="text-blue-700 font-semibold text-[11px]">
-                  Assigned Terminal
-                </span>
-              </>
-            )}
-          </div>
+          {/* Action button: Center on Device */}
+          <button
+            onClick={handleCenterOnDevice}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white border border-[#FDC3D1] hover:bg-[#FFF7F9] text-[#2E1826] hover:text-[#C72C5E] shadow-2xs transition-colors cursor-pointer"
+            title="Center map on device location"
+          >
+            <LocateFixed className="w-3.5 h-3.5 text-[#C72C5E]" />
+            <span>Center Device</span>
+          </button>
         </div>
 
-        {/* Action button: Center on Device */}
-        <button
-          onClick={handleCenterOnDevice}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white border border-[#FDC3D1] hover:bg-[#FFF7F9] text-[#2E1826] hover:text-[#C72C5E] shadow-2xs transition-colors cursor-pointer"
-          title="Center map on device location"
-        >
-          <LocateFixed className="w-3.5 h-3.5 text-[#C72C5E]" />
-          <span>Center Device</span>
-        </button>
-      </div>
+        {/* Embedded Leaflet Map Container */}
+        <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] min-h-[260px] max-h-[460px] bg-[#F4F3F0]">
+          <div
+            ref={mapContainerRef}
+            className="w-full h-full z-0 cursor-grab active:cursor-grabbing"
+            style={{ minHeight: '260px' }}
+          />
 
-      {/* Embedded Leaflet Map Container */}
-      <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] min-h-[260px] max-h-[460px] bg-[#F4F3F0]">
-        <div
-          ref={mapContainerRef}
-          className="w-full h-full z-0 cursor-grab active:cursor-grabbing"
-          style={{ minHeight: '260px' }}
-        />
-
-        {/* Floating Quick Telemetry Pill (Overlaid on bottom left of map) */}
-        {device && (
-          <div className="absolute bottom-3 left-3 z-[400] bg-white/95 backdrop-blur-xs px-2.5 py-1.5 rounded-xl border border-[#FDC3D1] shadow-sm flex items-center gap-3 text-xs font-semibold text-[#2E1826]">
-            <div className="flex items-center gap-1 text-[#C72C5E]">
-              <Thermometer className="w-3.5 h-3.5 text-[#C72C5E]" />
-              <span>{device.latestTemperatureC !== undefined ? `${device.latestTemperatureC.toFixed(1)}°C` : '--'}</span>
+          {/* Floating Quick Telemetry Pill (Overlaid on bottom left of map) */}
+          {device && (
+            <div className="absolute bottom-3 left-3 z-[400] bg-white/95 backdrop-blur-xs px-2.5 py-1.5 rounded-xl border border-[#FDC3D1] shadow-sm flex items-center gap-3 text-xs font-semibold text-[#2E1826]">
+              <div className="flex items-center gap-1 text-[#C72C5E]">
+                <Thermometer className="w-3.5 h-3.5 text-[#C72C5E]" />
+                <span>{device.latestTemperatureC !== undefined ? `${device.latestTemperatureC.toFixed(1)}°C` : '--'}</span>
+              </div>
+              <div className="h-3 w-[1px] bg-[#FDC3D1]" />
+              <div className="flex items-center gap-1 text-sky-600">
+                <Droplets className="w-3.5 h-3.5 text-sky-500" />
+                <span>{device.latestHumidityRH !== undefined ? `${device.latestHumidityRH.toFixed(0)}%` : '--'}</span>
+              </div>
             </div>
-            <div className="h-3 w-[1px] bg-[#FDC3D1]" />
-            <div className="flex items-center gap-1 text-sky-600">
-              <Droplets className="w-3.5 h-3.5 text-sky-500" />
-              <span>{device.latestHumidityRH !== undefined ? `${device.latestHumidityRH.toFixed(0)}%` : '--'}</span>
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* Floating Quick Recenter Button (Overlaid on bottom right above Leaflet attribution) */}
-        <button
-          onClick={handleCenterOnDevice}
-          className="absolute bottom-8 right-3 z-[400] w-9 h-9 rounded-xl bg-white border border-gray-200 shadow-md flex items-center justify-center text-[#2E1826] hover:bg-[#FFF7F9] hover:text-[#C72C5E] cursor-pointer transition-colors"
-          title="Recenter on Device"
-        >
-          <LocateFixed className="w-4 h-4 text-[#C72C5E]" />
-        </button>
-      </div>
+          {/* Floating Quick Recenter Button (Overlaid on bottom right above Leaflet attribution) */}
+          <button
+            onClick={handleCenterOnDevice}
+            className="absolute bottom-8 right-3 z-[400] w-9 h-9 rounded-xl bg-white border border-gray-200 shadow-md flex items-center justify-center text-[#2E1826] hover:bg-[#FFF7F9] hover:text-[#C72C5E] cursor-pointer transition-colors"
+            title="Recenter on Device"
+          >
+            <LocateFixed className="w-4 h-4 text-[#C72C5E]" />
+          </button>
+        </div>
 
-      {/* Simplified Footer Guide */}
-      <div className="bg-[#FFF7F9] border-t border-[#FDC3D1] px-4 py-2 flex items-center justify-between text-[11px] text-[#826674]">
-        <span className="flex items-center gap-1">
-          <Navigation className="w-3 h-3 text-[#C72C5E]" />
-          <span>Drag to pan • Pinch or scroll to zoom</span>
-        </span>
-        <span className="font-mono text-[10px]">
-          {gpsError ? 'Fallback coordinates active' : 'Live device location active'}
-        </span>
+        {/* Simplified Footer Guide */}
+        <div className="bg-[#FFF7F9] border-t border-[#FDC3D1] px-4 py-2 flex items-center justify-between text-[11px] text-[#826674]">
+          <span className="flex items-center gap-1">
+            <Navigation className="w-3 h-3 text-[#C72C5E]" />
+            <span>Drag to pan • Pinch or scroll to zoom</span>
+          </span>
+          <span className="font-mono text-[10px]">
+            {locationSource === 'GPS'
+              ? 'Live device GPS active'
+              : isWebOnline
+              ? 'Station fallback (Web online)'
+              : 'Offline'}
+          </span>
+        </div>
       </div>
     </div>
   );

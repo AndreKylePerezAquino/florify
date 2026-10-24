@@ -122,6 +122,16 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
   const [filterMode, setFilterMode] = useState<'ALL' | 'ONLINE' | 'ALERT'>('ALL');
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
 
+  // 5-second auto-refresh heartbeat to re-evaluate real-time GPS connection freshness
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTick(Date.now());
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Pre-calculate driver lookup dictionary
   const userMap = useMemo(() => {
     const map = new Map<string, UserProfile>();
@@ -260,11 +270,16 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
               ${
                 isLiveGps
                   ? `<span style="display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: #10B981; box-shadow: 0 0 6px #10B981;"></span>`
-                  : `<span style="display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: ${pinColor};"></span>`
+                  : `<span style="display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: #94A3B8;"></span>`
               }
               <span>${device.displayName || device.deviceId}</span>
               <span style="opacity: 0.35;">•</span>
-              <span style="color: ${isLiveGps ? '#6EE7B7' : '#FDC3D1'}; font-weight: 600;">${driverDisplayName}</span>
+              <span style="color: ${isLiveGps ? '#6EE7B7' : '#CBD5E1'}; font-weight: 600;">${driverDisplayName}</span>
+              ${
+                !isLiveGps && driver
+                  ? `<span style="color: #FDA4AF; font-size: 8.5px; font-weight: 600; text-transform: uppercase;">(GPS OFF)</span>`
+                  : ''
+              }
             </div>
 
             <!-- Pin Body with Integrated Driver Badge & Live GPS Pulse -->
@@ -285,7 +300,7 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
               </div>
 
               <!-- Overlapping Integrated Driver Badge -->
-              <div style="position: absolute; bottom: -2px; right: -2px; width: 16px; height: 16px; border-radius: 9999px; background: ${isLiveGps ? '#059669' : '#C72C5E'}; border: 1.5px solid #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 800; color: #FFFFFF;" title="${driverDisplayName}${isLiveGps ? ' (Live GPS)' : ''}">
+              <div style="position: absolute; bottom: -2px; right: -2px; width: 16px; height: 16px; border-radius: 9999px; background: ${isLiveGps ? '#059669' : '#64748B'}; border: 1.5px solid #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 800; color: #FFFFFF;" title="${driverDisplayName}${isLiveGps ? ' (Live GPS)' : ' (GPS Offline)'}">
                 ${driverInitial}
               </div>
             </div>
@@ -316,7 +331,7 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
         console.warn('Map fitBounds error:', e);
       }
     }
-  }, [devices, filterMode, userMap, isExpanded, selectedDeviceId]);
+  }, [devices, filterMode, userMap, isExpanded, selectedDeviceId, nowTick]);
 
   // Handle clicking a vehicle chip to center and open popup
   const focusDeviceOnMap = (deviceId: string) => {

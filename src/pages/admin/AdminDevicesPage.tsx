@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Cpu,
   Plus,
@@ -38,6 +38,13 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
   const [statusFilter, setStatusFilter] = useState<'ALL' | DeviceStatus>('ALL');
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
+
+  // 5-second timer to keep real-time GPS freshness updated
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   // New device form state
   const [newDeviceId, setNewDeviceId] = useState('');

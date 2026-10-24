@@ -34,6 +34,10 @@ export function isDriverGpsConnected(driver?: UserProfile | null): boolean {
   if (!driver || !driver.currentLocation) {
     return false;
   }
+  // Immediately disconnected if driver disabled or errored on GPS
+  if (driver.currentLocation.isActive === false) {
+    return false;
+  }
   const { latitude, longitude, updatedAt } = driver.currentLocation;
   if (
     typeof latitude !== 'number' ||
@@ -62,7 +66,7 @@ export function getDriverGpsStatus(driver?: UserProfile | null): {
   if (!driver || !driver.currentLocation) {
     return { status: 'NO_SIGNAL', elapsedSeconds: null, label: 'No GPS Signal' };
   }
-  const { latitude, longitude, updatedAt } = driver.currentLocation;
+  const { latitude, longitude, updatedAt, isActive } = driver.currentLocation;
   if (
     typeof latitude !== 'number' ||
     typeof longitude !== 'number' ||
@@ -77,6 +81,9 @@ export function getDriverGpsStatus(driver?: UserProfile | null): {
     return { status: 'NO_SIGNAL', elapsedSeconds: null, label: 'Invalid Timestamp' };
   }
   const elapsedSeconds = Math.max(0, Math.round((Date.now() - time) / 1000));
+  if (isActive === false) {
+    return { status: 'DISCONNECTED', elapsedSeconds, label: 'GPS Off' };
+  }
   if (elapsedSeconds <= 30) {
     return { status: 'CONNECTED', elapsedSeconds, label: `GPS Connected (${elapsedSeconds}s ago)` };
   }

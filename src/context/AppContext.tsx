@@ -81,6 +81,7 @@ interface AppContextType {
   rotateDeviceCredential: (deviceId: string) => Promise<string>;
   acknowledgeAlert: (alertId: string) => Promise<void>;
   updateDriverLocation: (coords: { latitude: number; longitude: number; accuracy?: number }) => Promise<void>;
+  setDriverGpsOffline: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -831,6 +832,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         latitude: Number(coords.latitude.toFixed(6)),
         longitude: Number(coords.longitude.toFixed(6)),
         updatedAt: new Date().toISOString(),
+        isActive: true,
       };
       if (typeof coords.accuracy === 'number' && !isNaN(coords.accuracy)) {
         locationData.accuracy = Math.round(coords.accuracy);
@@ -855,6 +857,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     } catch (err) {
       console.warn('Driver location update notice:', err);
+    }
+  };
+
+  const setDriverGpsOffline = async () => {
+    if (!currentUser) return;
+    try {
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      const userSnap = await getDoc(userDocRef);
+      if (userSnap.exists()) {
+        const data = userSnap.data();
+        const prevLoc = data.currentLocation || {};
+        await updateDoc(userDocRef, {
+          currentLocation: {
+            ...prevLoc,
+            isActive: false,
+            updatedAt: new Date().toISOString(),
+          },
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    } catch (err) {
+      console.warn('Notice setting driver GPS offline:', err);
     }
   };
 
@@ -907,6 +931,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         rotateDeviceCredential,
         acknowledgeAlert,
         updateDriverLocation,
+        setDriverGpsOffline,
       }}
     >
       {children}

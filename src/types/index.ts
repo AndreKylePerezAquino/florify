@@ -7,6 +7,7 @@ export interface DriverLocation {
   longitude: number;
   accuracy?: number;
   updatedAt: string;
+  isActive?: boolean;
 }
 
 export interface UserProfile {
