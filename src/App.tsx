@@ -13,6 +13,7 @@ import { AdminDeviceSettingsPage } from './pages/admin/AdminDeviceSettingsPage';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminAlertsPage } from './pages/admin/AdminAlertsPage';
 import { AdminAuditLogsPage } from './pages/admin/AdminAuditLogsPage';
+import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
 
 import { DriverDashboardPage } from './pages/driver/DriverDashboardPage';
 
@@ -134,6 +135,9 @@ const AppContent: React.FC = () => {
     }
     if (currentPath === '/admin/audit-logs') {
       return <AdminAuditLogsPage />;
+    }
+    if (currentPath === '/admin/settings') {
+      return <AdminSettingsPage navigate={navigate} />;
     }
 
     // Driver routes (Simplified inline telemetry monitor)

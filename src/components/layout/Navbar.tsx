@@ -105,6 +105,14 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate }) => {
               >
                 Audit Logs
               </button>
+              <button
+                onClick={() => navigate('/admin/settings')}
+                className={`whitespace-nowrap transition-colors hover:text-[#C72C5E] cursor-pointer ${
+                  currentPath === '/admin/settings' ? 'text-[#C72C5E] font-semibold' : ''
+                }`}
+              >
+                Settings
+              </button>
             </>
           ) : (
             <>

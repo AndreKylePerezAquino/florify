@@ -56,7 +56,7 @@ export function isDriverGpsConnected(driver?: UserProfile | null): boolean {
   return Date.now() - time <= 30 * 1000;
 }
 
-export type DriverGpsStatus = 'CONNECTED' | 'DISCONNECTED' | 'NO_SIGNAL';
+export type DriverGpsStatus = 'LIVE' | 'DELAYED' | 'STALE' | 'NO_SIGNAL' | 'CONNECTED' | 'DISCONNECTED';
 
 export function getDriverGpsStatus(driver?: UserProfile | null): {
   status: DriverGpsStatus;
@@ -84,8 +84,14 @@ export function getDriverGpsStatus(driver?: UserProfile | null): {
   if (isActive === false) {
     return { status: 'DISCONNECTED', elapsedSeconds, label: 'GPS Off' };
   }
-  if (elapsedSeconds <= 30) {
-    return { status: 'CONNECTED', elapsedSeconds, label: `GPS Connected (${elapsedSeconds}s ago)` };
+  if (elapsedSeconds <= 15) {
+    return { status: 'LIVE', elapsedSeconds, label: `GPS Live (${elapsedSeconds}s ago)` };
   }
-  return { status: 'DISCONNECTED', elapsedSeconds, label: `GPS Disconnected (${elapsedSeconds}s ago)` };
+  if (elapsedSeconds <= 30) {
+    return { status: 'DELAYED', elapsedSeconds, label: `GPS Delayed (${elapsedSeconds}s ago)` };
+  }
+  if (elapsedSeconds <= 60) {
+    return { status: 'STALE', elapsedSeconds, label: `GPS Stale (${elapsedSeconds}s ago)` };
+  }
+  return { status: 'DISCONNECTED', elapsedSeconds, label: `GPS Offline (${elapsedSeconds}s ago)` };
 }
