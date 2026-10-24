@@ -32,10 +32,7 @@ export const AdminAlertsPage: React.FC = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold tracking-tight text-[#2E1826]">System Alerts & Recovery</h1>
-        <p className="text-xs text-[#826674] mt-0.5">
-          Audited alert notifications for threshold excursions, device offline timeouts, and sensor fault recovery.
-        </p>
+        <h1 className="text-xl font-bold tracking-tight text-[#2E1826]">System Alerts</h1>
       </div>
 
       {/* Filter and Search Bar */}

@@ -28,9 +28,6 @@ export const AdminAuditLogsPage: React.FC = () => {
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold tracking-tight text-[#2E1826]">Administrative Audit Trail</h1>
-        <p className="text-xs text-[#826674] mt-0.5">
-          Immutable server-side audit logs recording security assignments, threshold modifications, and fan overrides.
-        </p>
       </div>
 
       {/* Search Bar */}

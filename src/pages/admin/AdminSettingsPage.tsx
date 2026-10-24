@@ -14,6 +14,7 @@ import {
   Plus,
   ArrowRight,
   RefreshCw,
+  X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { isDeviceConnected } from '../../lib/deviceStatus';
@@ -23,7 +24,7 @@ interface AdminSettingsPageProps {
 }
 
 export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }) => {
-  const { devices, allUsers } = useApp();
+  const { devices, allUsers, registerDevice, updateEsp32Control } = useApp();
 
   // Local state for admin configuration & map/automation settings (persisted to localStorage)
   const [fleetName, setFleetName] = useState<string>('Florify Fleet Intelligence');
@@ -44,6 +45,51 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
 
   const [saving, setSaving] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Registration modal state
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [newDeviceId, setNewDeviceId] = useState('');
+  const [newDisplayName, setNewDisplayName] = useState('');
+  const [newLocationLabel, setNewLocationLabel] = useState('');
+  const [newDriverUid, setNewDriverUid] = useState<string>('');
+  const [registerError, setRegisterError] = useState<string | null>(null);
+
+  const approvedDrivers = allUsers.filter((u) => u.role === 'DRIVER' && u.status === 'APPROVED');
+
+  const handleGenerateId = () => {
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    setNewDeviceId(`ESP32-SHUTTLE-${randomSuffix}`);
+  };
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDeviceId.trim() || !newDisplayName.trim()) {
+      setRegisterError('Device ID and Display Name are required.');
+      return;
+    }
+
+    if (devices.some((d) => d.deviceId.toUpperCase() === newDeviceId.trim().toUpperCase())) {
+      setRegisterError('A device with this ID already exists.');
+      return;
+    }
+
+    try {
+      await registerDevice(
+        newDeviceId,
+        newDisplayName,
+        newLocationLabel || undefined,
+        newDriverUid || null
+      );
+      setIsRegisterModalOpen(false);
+      setNewDeviceId('');
+      setNewDisplayName('');
+      setNewLocationLabel('');
+      setNewDriverUid('');
+      setRegisterError(null);
+    } catch (err: any) {
+      setRegisterError(err?.message || 'Failed to register device.');
+    }
+  };
 
   // Load saved settings from localStorage on mount
   useEffect(() => {
@@ -117,9 +163,6 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
             <Settings className="h-6 w-6 text-[#C72C5E]" />
             Admin Control Center & Settings
           </h1>
-          <p className="text-xs text-[#826674] mt-1">
-            Configure map parameters, registration workflow, and global ESP32 automation thresholds.
-          </p>
         </div>
 
         <button
@@ -157,7 +200,6 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
             </div>
             <div>
               <h2 className="text-base font-bold text-[#2E1826]">SECTION 1: General Settings and Map Settings</h2>
-              <p className="text-xs text-[#826674]">Fleet identification, cartography layers, GPS grace period, and auto-centering.</p>
             </div>
           </div>
 
@@ -216,9 +258,6 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
                 onChange={(e) => setGpsGracePeriodSec(Number(e.target.value))}
                 className="w-full bg-[#FFF7F9]/40 border border-[#FDC3D1] rounded-xl px-3 py-2 text-xs text-[#2E1826] focus:outline-none focus:border-[#FF5C89]"
               />
-              <p className="text-[11px] text-[#826674] mt-1">
-                Duration of missing telemetry before marking driver GPS status as Delayed or Stale.
-              </p>
             </div>
           </div>
 
@@ -263,7 +302,6 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
             </div>
             <div>
               <h2 className="text-base font-bold text-[#2E1826]">SECTION 2: Registration Management</h2>
-              <p className="text-xs text-[#826674]">Register ESP32 climate monitors, provision driver accounts, and manage role approvals.</p>
             </div>
           </div>
 
@@ -276,14 +314,26 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
               <p className="text-xs text-[#826674]">
                 {devices.length} ESP32 units registered ({onlineDevicesCount} active).
               </p>
-              <button
-                type="button"
-                onClick={() => navigate('/admin/devices')}
-                className="w-full py-2 bg-[#FF5C89] hover:bg-[#C72C5E] text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Manage & Register Devices
-              </button>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleGenerateId();
+                    setIsRegisterModalOpen(true);
+                  }}
+                  className="w-full py-2 bg-[#FF5C89] hover:bg-[#C72C5E] text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Register Climate Monitor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/admin/devices')}
+                  className="w-full py-1.5 bg-[#FFF7F9] hover:bg-[#FDC3D1]/40 border border-[#FDC3D1] text-[#2E1826] text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  Manage Devices
+                </button>
+              </div>
             </div>
 
             <div className="bg-[#FFF7F9]/50 p-4 rounded-xl border border-[#FDC3D1] space-y-3">
@@ -334,7 +384,6 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
             </div>
             <div>
               <h2 className="text-base font-bold text-[#2E1826]">SECTION 3: Automation Settings</h2>
-              <p className="text-xs text-[#826674]">Global ESP32 climate automation hysteresis thresholds, DHT reading frequency, and activation mode.</p>
             </div>
           </div>
 
@@ -429,6 +478,34 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
           </div>
         </section>
 
+        {/* SECTION 4: ESP32 Relay Manual Control */}
+        <section className="bg-white rounded-2xl border border-[#FDC3D1] p-6 shadow-xs space-y-5">
+          <div className="flex items-center gap-3 pb-3 border-b border-[#FDC3D1]">
+            <div className="p-2 rounded-xl bg-[#FFF7F9] text-[#C72C5E] border border-[#FDC3D1]">
+              <Cpu className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-[#2E1826]">SECTION 4: ESP32 Relay Manual Control</h2>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              type="button"
+              onClick={() => updateEsp32Control('ON', 'OFF')}
+              className="py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl"
+            >
+              Fan ON
+            </button>
+            <button
+              type="button"
+              onClick={() => updateEsp32Control('OFF', 'OFF')}
+              className="py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl"
+            >
+              Fan OFF
+            </button>
+          </div>
+        </section>
+
         {/* Bottom Save Action */}
         <div className="flex justify-end pt-2">
           <button
@@ -441,6 +518,110 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
           </button>
         </div>
       </form>
+
+      {/* Register Climate Monitor Modal */}
+      {isRegisterModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-[#FDC3D1] shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-[#FDC3D1]">
+              <div className="flex items-center gap-2">
+                <Cpu className="h-5 w-5 text-[#C72C5E]" />
+                <h3 className="text-base font-bold text-[#2E1826]">Register Climate Monitor</h3>
+              </div>
+              <button
+                onClick={() => setIsRegisterModalOpen(false)}
+                className="p-1 rounded-lg text-[#826674] hover:bg-[#FFF7F9] cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {registerError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl">
+                {registerError}
+              </div>
+            )}
+
+            <form onSubmit={handleRegisterSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#2E1826] mb-1">Device ID</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    value={newDeviceId}
+                    onChange={(e) => setNewDeviceId(e.target.value)}
+                    placeholder="e.g. ESP32-SHUTTLE-101"
+                    className="flex-1 bg-[#FFF7F9]/50 border border-[#FDC3D1] rounded-xl px-3 py-2 text-xs font-mono text-[#2E1826] focus:outline-none focus:border-[#FF5C89]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleGenerateId}
+                    className="px-3 py-2 bg-[#FFF7F9] hover:bg-[#FDC3D1]/40 border border-[#FDC3D1] text-[#C72C5E] text-xs font-semibold rounded-xl cursor-pointer whitespace-nowrap"
+                  >
+                    Generate
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#2E1826] mb-1">Display Name</label>
+                <input
+                  type="text"
+                  required
+                  value={newDisplayName}
+                  onChange={(e) => setNewDisplayName(e.target.value)}
+                  placeholder="e.g. Shuttle Cabin Alpha"
+                  className="w-full bg-[#FFF7F9]/50 border border-[#FDC3D1] rounded-xl px-3 py-2 text-xs text-[#2E1826] focus:outline-none focus:border-[#FF5C89]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#2E1826] mb-1">Location Label (Optional)</label>
+                <input
+                  type="text"
+                  value={newLocationLabel}
+                  onChange={(e) => setNewLocationLabel(e.target.value)}
+                  placeholder="e.g. Central Terminal / Route 1"
+                  className="w-full bg-[#FFF7F9]/50 border border-[#FDC3D1] rounded-xl px-3 py-2 text-xs text-[#2E1826] focus:outline-none focus:border-[#FF5C89]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#2E1826] mb-1">Assign Driver (Optional)</label>
+                <select
+                  value={newDriverUid}
+                  onChange={(e) => setNewDriverUid(e.target.value)}
+                  className="w-full bg-[#FFF7F9]/50 border border-[#FDC3D1] rounded-xl px-3 py-2 text-xs text-[#2E1826] focus:outline-none focus:border-[#FF5C89]"
+                >
+                  <option value="">Unassigned (Standby)</option>
+                  {approvedDrivers.map((driver) => (
+                    <option key={driver.uid} value={driver.uid}>
+                      {driver.displayName} ({driver.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#FDC3D1]">
+                <button
+                  type="button"
+                  onClick={() => setIsRegisterModalOpen(false)}
+                  className="px-4 py-2 bg-[#FFF7F9] hover:bg-[#FDC3D1]/40 border border-[#FDC3D1] text-[#2E1826] text-xs font-semibold rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#FF5C89] hover:bg-[#C72C5E] text-white text-xs font-semibold rounded-xl shadow-xs cursor-pointer"
+                >
+                  Register Monitor
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

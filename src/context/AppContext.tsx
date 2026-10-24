@@ -82,6 +82,7 @@ interface AppContextType {
   acknowledgeAlert: (alertId: string) => Promise<void>;
   updateDriverLocation: (coords: { latitude: number; longitude: number; accuracy?: number }) => Promise<void>;
   setDriverGpsOffline: () => Promise<void>;
+  updateEsp32Control: (fan: 'ON' | 'OFF' | 'UNCHANGED', hum: 'ON' | 'OFF' | 'UNCHANGED') => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -802,6 +803,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const updateEsp32Control = async (fan: 'ON' | 'OFF' | 'UNCHANGED', hum: 'ON' | 'OFF' | 'UNCHANGED') => {
+    const esp32Host = 'esp32.local'; // ESP32 mDNS hostname
+    try {
+      if (fan !== 'UNCHANGED') {
+        await fetch(`http://${esp32Host}/fan?state=${fan.toLowerCase()}`);
+      }
+      if (hum !== 'UNCHANGED') {
+        await fetch(`http://${esp32Host}/hum?state=${hum.toLowerCase()}`);
+      }
+    } catch (err) {
+      console.error('Error controlling ESP32:', err);
+    }
+  };
+
   const lastLocationUpdateRef = useRef<{ timestamp: number; lat: number; lng: number }>({
     timestamp: 0,
     lat: 0,
@@ -932,6 +947,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         acknowledgeAlert,
         updateDriverLocation,
         setDriverGpsOffline,
+        updateEsp32Control,
       }}
     >
       {children}

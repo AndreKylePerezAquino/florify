@@ -89,11 +89,8 @@ export const AdminUsersPage: React.FC = () => {
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold tracking-tight text-[#2E1826]">
-          Driver & Staff Access Management
+          Driver & Staff Management
         </h1>
-        <p className="text-xs text-[#826674] mt-0.5">
-          Govern administrator hierarchy levels, review staff access requests, and transfer authorization tiers.
-        </p>
       </div>
 
       {/* Pending Access Requests Section (Priority) */}
@@ -200,7 +197,7 @@ export const AdminUsersPage: React.FC = () => {
                 <th className="py-3 px-4">User</th>
                 <th className="py-3 px-4">Level & Role Hierarchy</th>
                 <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Assigned ESP32 Monitor</th>
+                <th className="py-3 px-4">Assigned monitor</th>
                 <th className="py-3 px-4">Approval Details</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
@@ -264,10 +261,10 @@ export const AdminUsersPage: React.FC = () => {
                       {/* Assigned Device */}
                       <td className="py-3 px-4">
                         {assignedDevice ? (
-                          <div className="font-mono">
-                            <span className="font-semibold text-[#2E1826]">{assignedDevice.deviceId}</span>
-                            <span className="text-[11px] text-[#826674] block truncate">
-                              {assignedDevice.displayName}
+                          <div>
+                            <span className="font-bold text-[#2E1826] block">{assignedDevice.displayName}</span>
+                            <span className="text-[11px] text-[#826674] font-mono block truncate">
+                              {assignedDevice.deviceId}
                             </span>
                           </div>
                         ) : (

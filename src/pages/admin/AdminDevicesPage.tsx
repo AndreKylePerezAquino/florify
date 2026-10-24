@@ -13,6 +13,7 @@ import {
   X,
   ExternalLink,
   Trash2,
+  PowerOff,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -128,22 +129,6 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-[#2E1826]">Climate Monitors</h1>
-          <p className="text-xs text-[#826674] mt-0.5">
-            Register climate monitors and manage climate monitors.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <button
-            onClick={() => {
-              handleGenerateId();
-              setIsRegisterModalOpen(true);
-            }}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-[#FF5C89] hover:bg-[#C72C5E] text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
-          >
-            <Plus className="h-4 w-4" />
-            Register Climate Monitor
-          </button>
         </div>
       </div>
 
@@ -162,7 +147,7 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
 
         {/* Status Filters */}
         <div className="flex items-center gap-1 overflow-x-auto text-xs">
-          {(['ALL', 'SENSOR_ERROR', 'DISABLED'] as const).map((st) => (
+          {(['ALL', 'DISABLED'] as const).map((st) => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
@@ -184,7 +169,7 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-[#FDC3D1] bg-[#FFF7F9]/50 text-[#826674] font-semibold">
-                <th className="py-3 px-4">Device ID & Name</th>
+                <th className="py-3 px-4">Monitor name</th>
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4">Assigned Driver</th>
                 <th className="py-3 px-4">Latest Climate</th>
@@ -296,7 +281,7 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
                             </span>
                           </div>
                         ) : (
-                          <span className="text-slate-400">No telemetry</span>
+                          <span className="text-slate-400">NO DATA</span>
                         )}
                       </td>
 
