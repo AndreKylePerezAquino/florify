@@ -4,11 +4,15 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
+import { initializeApp, getApps } from 'firebase/app';
+import { getFirestore, doc, updateDoc, setDoc, collection, addDoc, Firestore } from 'firebase/firestore';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+let firestoreDb: Firestore | null = null;
 
 // Automatically synchronize active Firebase configuration from secrets on startup
 function syncActiveConfig() {
@@ -107,6 +111,24 @@ function syncActiveConfig() {
 
 syncActiveConfig();
 
+function initFirestoreBridge() {
+  try {
+    const configPath = path.join(__dirname, 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      const currentConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (currentConfig && currentConfig.projectId && currentConfig.apiKey) {
+        const fbApp = getApps().length === 0 ? initializeApp(currentConfig) : getApps()[0];
+        firestoreDb = getFirestore(fbApp, currentConfig.firestoreDatabaseId || '(default)');
+        console.log('[Server] Firestore bridge active for live device telemetry.');
+      }
+    }
+  } catch (err) {
+    console.warn('[Server] Notice initializing Firestore bridge:', err);
+  }
+}
+
+initFirestoreBridge();
+
 const app = express();
 
 // Parse CLI --port if provided, or default to port 3000 (avoid colliding with container port 8080)
@@ -189,9 +211,34 @@ function logAdminAudit(actorUid: string, action: string, targetType: string, tar
  * POST /api/device/heartbeat
  * Periodic device ping with hardware telemetry (free heap, RSSI, firmware version)
  */
-app.post('/api/device/heartbeat', verifyDeviceAuth, (req: Request, res: Response) => {
+app.post('/api/device/heartbeat', verifyDeviceAuth, async (req: Request, res: Response) => {
   const { deviceId, firmwareVersion, freeHeap, wifiRssi } = req.body;
   console.log(`[API] Heartbeat received from ${deviceId} (FW: ${firmwareVersion}, Heap: ${freeHeap}, RSSI: ${wifiRssi})`);
+
+  if (firestoreDb) {
+    try {
+      const devRef = doc(firestoreDb, 'devices', deviceId);
+      await updateDoc(devRef, {
+        lastSeenAt: new Date().toISOString(),
+        status: 'ACTIVE',
+        ...(typeof freeHeap === 'number' ? { freeHeap } : {}),
+        ...(typeof wifiRssi === 'number' ? { wifiRssi } : {}),
+        ...(firmwareVersion ? { firmwareVersion } : {}),
+      }).catch(async (err: any) => {
+        if (err.code === 'not-found') {
+          await setDoc(devRef, {
+            deviceId,
+            displayName: `ESP32 (${deviceId})`,
+            status: 'ACTIVE',
+            lastSeenAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+          }).catch(() => {});
+        }
+      });
+    } catch (dbErr) {
+      console.warn('[Server] Notice updating heartbeat in Firestore:', dbErr);
+    }
+  }
 
   res.status(200).json({
     status: 'ACK',
@@ -204,7 +251,7 @@ app.post('/api/device/heartbeat', verifyDeviceAuth, (req: Request, res: Response
  * POST /api/device/readings
  * Batch telemetry ingest from DHT11 sensor with fan relay state
  */
-app.post('/api/device/readings', verifyDeviceAuth, (req: Request, res: Response) => {
+app.post('/api/device/readings', verifyDeviceAuth, async (req: Request, res: Response) => {
   const { deviceId, readings } = req.body;
 
   if (!Array.isArray(readings) || readings.length === 0) {
@@ -212,7 +259,7 @@ app.post('/api/device/readings', verifyDeviceAuth, (req: Request, res: Response)
   }
 
   for (const sample of readings) {
-    const { temperatureC, humidityRH, fanState, operatingMode, sensorHealthy } = sample;
+    const { temperatureC, humidityRH, fanState, operatingMode } = sample;
 
     // Numerical sanity checks for DHT11
     if (typeof temperatureC !== 'number' || typeof humidityRH !== 'number') {
@@ -223,6 +270,58 @@ app.post('/api/device/readings', verifyDeviceAuth, (req: Request, res: Response)
     }
 
     console.log(`[API] Telemetry from ${deviceId}: ${temperatureC}°C, ${humidityRH}% RH, Fan: ${fanState} (${operatingMode})`);
+  }
+
+  // Persist to Firestore so website dashboards update live via onSnapshot listeners
+  if (firestoreDb) {
+    try {
+      const nowIso = new Date().toISOString();
+      const latestSample = readings[readings.length - 1];
+      const devRef = doc(firestoreDb, 'devices', deviceId);
+
+      await updateDoc(devRef, {
+        latestTemperatureC: latestSample.temperatureC,
+        latestHumidityRH: latestSample.humidityRH,
+        latestFanState: latestSample.fanState || 'OFF',
+        latestMistState: latestSample.mistState || 'OFF',
+        lastReadingAt: latestSample.timestamp || nowIso,
+        lastSeenAt: nowIso,
+        status: 'ACTIVE',
+        reportedMode: latestSample.operatingMode || 'AUTO',
+      }).catch(async (err: any) => {
+        if (err.code === 'not-found') {
+          await setDoc(devRef, {
+            deviceId,
+            displayName: `ESP32 (${deviceId})`,
+            latestTemperatureC: latestSample.temperatureC,
+            latestHumidityRH: latestSample.humidityRH,
+            latestFanState: latestSample.fanState || 'OFF',
+            latestMistState: latestSample.mistState || 'OFF',
+            lastReadingAt: latestSample.timestamp || nowIso,
+            lastSeenAt: nowIso,
+            status: 'ACTIVE',
+            reportedMode: latestSample.operatingMode || 'AUTO',
+            createdAt: nowIso,
+          }).catch(() => {});
+        }
+      });
+
+      const readingsCol = collection(firestoreDb, 'devices', deviceId, 'readings');
+      for (const sample of readings) {
+        await addDoc(readingsCol, {
+          deviceId,
+          temperatureC: sample.temperatureC,
+          humidityRH: sample.humidityRH,
+          fanState: sample.fanState || 'OFF',
+          mistState: sample.mistState || 'OFF',
+          operatingMode: sample.operatingMode || 'AUTO',
+          sensorHealthy: sample.sensorHealthy !== false,
+          receivedAt: sample.timestamp || nowIso,
+        }).catch((err) => console.warn('[Server] Notice persisting subcollection reading:', err));
+      }
+    } catch (dbErr) {
+      console.warn('[Server] Notice updating readings in Firestore:', dbErr);
+    }
   }
 
   res.status(200).json({
