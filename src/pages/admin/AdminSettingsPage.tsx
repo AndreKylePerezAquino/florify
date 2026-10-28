@@ -24,7 +24,12 @@ interface AdminSettingsPageProps {
 }
 
 export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }) => {
-  const { devices, allUsers, registerDevice, updateEsp32Control } = useApp();
+  const { devices, deviceConfigs, allUsers, registerDevice, updateEsp32Control } = useApp();
+
+  // Manual ESP32 command state
+  const [selectedManualDeviceId, setSelectedManualDeviceId] = useState<string>('ESP32-FLORIFY-01');
+  const [manualSending, setManualSending] = useState<boolean>(false);
+  const [manualFeedback, setManualFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Local state for admin configuration & map/automation settings (persisted to localStorage)
   const [fleetName, setFleetName] = useState<string>('Florify Fleet Intelligence');
@@ -485,32 +490,226 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
           </div>
         </section>
 
-        {/* SECTION 4: ESP32 Relay Manual Control */}
+        {/* SECTION 4: ESP32 Relay Manual Control via Firebase Cloud Sync */}
         <section className="bg-white rounded-2xl border border-[#FDC3D1] p-6 shadow-xs space-y-5">
-          <div className="flex items-center gap-3 pb-3 border-b border-[#FDC3D1]">
-            <div className="p-2 rounded-xl bg-[#FFF7F9] text-[#C72C5E] border border-[#FDC3D1]">
-              <Cpu className="h-5 w-5" />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#FDC3D1]">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-[#FFF7F9] text-[#C72C5E] border border-[#FDC3D1]">
+                <Cpu className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-[#2E1826]">SECTION 4: ESP32 Relay Actuator Controls</h2>
+                <p className="text-xs text-[#7B5B6E]">
+                  Commands are synchronized in real-time to Firebase Firestore (<code className="text-[#C72C5E]">/devices/{'{id}'}/config/current</code>).
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base font-bold text-[#2E1826]">SECTION 4: ESP32 Relay Manual Control</h2>
+
+            {/* Target Device Selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-[#7B5B6E]">Target Device:</span>
+              <select
+                value={selectedManualDeviceId}
+                onChange={(e) => {
+                  setSelectedManualDeviceId(e.target.value);
+                  setManualFeedback(null);
+                }}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg border border-[#FDC3D1] bg-[#FFF7F9] text-[#2E1826] focus:outline-none focus:ring-1 focus:ring-[#FF5C89]"
+              >
+                {devices.length > 0 ? (
+                  devices.map((d) => {
+                    const id = d.deviceId || (d as any).id;
+                    return (
+                      <option key={id} value={id}>
+                        {d.displayName || id} ({id})
+                      </option>
+                    );
+                  })
+                ) : (
+                  <option value="ESP32-FLORIFY-01">ESP32-FLORIFY-01 (Default)</option>
+                )}
+              </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              type="button"
-              onClick={() => updateEsp32Control('ON', 'OFF')}
-              className="py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl"
-            >
-              Fan ON
-            </button>
-            <button
-              type="button"
-              onClick={() => updateEsp32Control('OFF', 'OFF')}
-              className="py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl"
-            >
-              Fan OFF
-            </button>
-          </div>
+
+          {/* Current Cloud Synced Status */}
+          {(() => {
+            const devConf = deviceConfigs[selectedManualDeviceId] || {};
+            const currentFanMode = devConf.fanMode || 'AUTO';
+            const currentMistMode = devConf.mistMode || 'FORCE_OFF';
+
+            const handleSend = async (
+              fanAction: 'ON' | 'OFF' | 'AUTO' | 'UNCHANGED',
+              humAction: 'ON' | 'OFF' | 'AUTO' | 'UNCHANGED',
+              label: string
+            ) => {
+              setManualSending(true);
+              setManualFeedback(null);
+              try {
+                await updateEsp32Control(fanAction, humAction, selectedManualDeviceId);
+                setManualFeedback({
+                  type: 'success',
+                  message: `Command "${label}" successfully published to Firestore for ${selectedManualDeviceId}! The ESP32 will execute it on its sync cycle.`,
+                });
+              } catch (err: any) {
+                setManualFeedback({
+                  type: 'error',
+                  message: `Failed to send command: ${err?.message || 'Firestore error'}`,
+                });
+              } finally {
+                setManualSending(false);
+              }
+            };
+
+            return (
+              <div className="space-y-4">
+                {manualFeedback && (
+                  <div
+                    className={`p-3 rounded-xl text-xs flex items-center justify-between gap-2 border ${
+                      manualFeedback.type === 'success'
+                        ? 'bg-[#EBF7EE] text-[#1E7E34] border-[#C3E6CB]'
+                        : 'bg-[#FDF2F4] text-[#C72C5E] border-[#FDC3D1]'
+                    }`}
+                  >
+                    <span>{manualFeedback.message}</span>
+                    <button
+                      type="button"
+                      onClick={() => setManualFeedback(null)}
+                      className="text-xs font-bold hover:opacity-70"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Channel 1: Cooling Fan (GPIO 18) */}
+                  <div className="p-4 rounded-xl border border-[#FDC3D1] bg-[#FFF7F9] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Thermometer className="h-4 w-4 text-[#C72C5E]" />
+                        <span className="text-xs font-bold text-[#2E1826]">Channel 1: Cooling Fan (GPIO 18)</span>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                          currentFanMode === 'FORCE_ON'
+                            ? 'bg-[#EBF7EE] text-[#1E7E34]'
+                            : currentFanMode === 'FORCE_OFF'
+                            ? 'bg-gray-200 text-gray-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        Mode: {currentFanMode}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#7B5B6E]">
+                      Continuously energizes relay coil for cooling fan.
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        disabled={manualSending}
+                        onClick={() => handleSend('ON', 'UNCHANGED', 'Fan FORCE_ON')}
+                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
+                          currentFanMode === 'FORCE_ON'
+                            ? 'bg-green-600 text-white shadow-xs'
+                            : 'bg-white border border-[#FDC3D1] hover:bg-[#EBF7EE] text-[#1E7E34]'
+                        }`}
+                      >
+                        Fan ON
+                      </button>
+                      <button
+                        type="button"
+                        disabled={manualSending}
+                        onClick={() => handleSend('OFF', 'UNCHANGED', 'Fan FORCE_OFF')}
+                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
+                          currentFanMode === 'FORCE_OFF'
+                            ? 'bg-rose-600 text-white shadow-xs'
+                            : 'bg-white border border-[#FDC3D1] hover:bg-rose-50 text-rose-700'
+                        }`}
+                      >
+                        Fan OFF
+                      </button>
+                      <button
+                        type="button"
+                        disabled={manualSending}
+                        onClick={() => handleSend('AUTO', 'UNCHANGED', 'Fan AUTO Hysteresis')}
+                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
+                          currentFanMode === 'AUTO'
+                            ? 'bg-[#FF5C89] text-white shadow-xs'
+                            : 'bg-white border border-[#FDC3D1] hover:bg-[#FFF7F9] text-[#7B5B6E]'
+                        }`}
+                      >
+                        Auto (40°C)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Channel 2: Humidifier (GPIO 19) */}
+                  <div className="p-4 rounded-xl border border-[#FDC3D1] bg-[#FFF7F9] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Droplets className="h-4 w-4 text-blue-500" />
+                        <span className="text-xs font-bold text-[#2E1826]">Channel 2: Humidifier (GPIO 19)</span>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                          currentMistMode === 'FORCE_ON'
+                            ? 'bg-[#EBF7EE] text-[#1E7E34]'
+                            : currentMistMode === 'FORCE_OFF'
+                            ? 'bg-gray-200 text-gray-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        Mode: {currentMistMode}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#7B5B6E]">
+                      Simulates momentary clicks: 1 click to turn ON, 2 clicks (300ms apart) to turn OFF.
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        disabled={manualSending}
+                        onClick={() => handleSend('UNCHANGED', 'ON', 'Humidifier 1-Click ON')}
+                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
+                          currentMistMode === 'FORCE_ON'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white border border-[#FDC3D1] hover:bg-blue-50 text-blue-700'
+                        }`}
+                      >
+                        1 Click ON
+                      </button>
+                      <button
+                        type="button"
+                        disabled={manualSending}
+                        onClick={() => handleSend('UNCHANGED', 'OFF', 'Humidifier 2-Click OFF')}
+                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
+                          currentMistMode === 'FORCE_OFF'
+                            ? 'bg-gray-700 text-white shadow-xs'
+                            : 'bg-white border border-[#FDC3D1] hover:bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        2 Click OFF
+                      </button>
+                      <button
+                        type="button"
+                        disabled={manualSending}
+                        onClick={() => handleSend('UNCHANGED', 'AUTO', 'Humidifier AUTO')}
+                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
+                          currentMistMode === 'AUTO'
+                            ? 'bg-[#FF5C89] text-white shadow-xs'
+                            : 'bg-white border border-[#FDC3D1] hover:bg-[#FFF7F9] text-[#7B5B6E]'
+                        }`}
+                      >
+                        Auto (RH)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </section>
 
         {/* Bottom Save Action */}

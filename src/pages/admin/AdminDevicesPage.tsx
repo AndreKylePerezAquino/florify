@@ -69,7 +69,7 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
     if (!d) return false;
     const matchesStatus = statusFilter === 'ALL' || d.status === statusFilter;
     const q = (searchQuery || '').trim().toLowerCase();
-    const id = (d.deviceId || '').toLowerCase();
+    const id = (d.deviceId || (d as any).id || '').toLowerCase();
     const name = (d.displayName || '').toLowerCase();
     const loc = (d.locationLabel || '').toLowerCase();
     const matchesSearch = id.includes(q) || name.includes(q) || loc.includes(q);
@@ -200,20 +200,21 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
               ) : (
                 filteredDevices.map((device, index) => {
                   const assignedDriver = allUsers.find((u) => u.uid === device.assignedDriverUid);
-                  const safeKey = device.deviceId ? `${device.deviceId}-${index}` : `device-row-${index}`;
+                  const effectiveId = device.deviceId || (device as any).id || '';
+                  const safeKey = effectiveId ? `${effectiveId}-${index}` : `device-row-${index}`;
 
                   return (
                     <tr key={safeKey} className="hover:bg-[#FFF7F9]/30 transition-colors">
                       {/* Name & ID */}
                       <td className="py-3 px-4">
                         <button
-                          onClick={() => navigate(`/admin/devices/${device.deviceId || ''}`)}
+                          onClick={() => navigate(`/admin/devices/${effectiveId}`)}
                           className="font-bold text-[#2E1826] hover:text-[#C72C5E] text-left block"
                         >
-                          {device.displayName || device.deviceId || 'Unnamed Device'}
+                          {device.displayName || effectiveId || 'Unnamed Device'}
                         </button>
                         <div className="font-mono text-[11px] text-[#826674]">
-                          {device.deviceId || 'No ID'}
+                          {effectiveId || 'No ID'}
                           {device.locationLabel && ` · ${device.locationLabel}`}
                         </div>
                       </td>
@@ -329,28 +330,28 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => navigate(`/admin/devices/${device.deviceId}`)}
+                            onClick={() => navigate(`/admin/devices/${effectiveId}`)}
                             className="p-1.5 rounded hover:bg-[#FFF7F9] text-[#C72C5E] cursor-pointer"
                             title="Device Details & Historical Graphs"
                           >
                             <ExternalLink className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => navigate(`/admin/devices/${device.deviceId}/settings`)}
+                            onClick={() => navigate(`/admin/devices/${effectiveId}/settings`)}
                             className="p-1.5 rounded hover:bg-[#FFF7F9] text-[#826674] hover:text-[#C72C5E] cursor-pointer"
                             title="Automation Settings"
                           >
                             <Settings className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => handleRotate(device.deviceId)}
+                            onClick={() => handleRotate(effectiveId)}
                             className="p-1.5 rounded hover:bg-[#FFF7F9] text-[#826674] hover:text-[#C72C5E] cursor-pointer"
                             title="Rotate Device Secret"
                           >
                             <KeyRound className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => setDeletingDeviceId(device.deviceId)}
+                            onClick={() => setDeletingDeviceId(effectiveId)}
                             className="p-1.5 rounded hover:bg-rose-50 text-rose-600 cursor-pointer"
                             title="Remove Climate Monitor"
                           >

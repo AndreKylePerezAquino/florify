@@ -347,76 +347,147 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
         </div>
       </div>
 
-      {/* Manual Actuator Controls: Cooling OFF/ON & Humidity value% UP/DOWN */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Cooling OFF/ON Control Bar */}
-        <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
-                <Power className="h-4 w-4 text-[#C72C5E]" />
-                Cooling OFF / ON Controls (GPIO 26)
-              </h3>
-              <p className="text-xs text-[#826674]">
-                Operating mode:{' '}
-                <strong className="text-[#C72C5E] uppercase">{liveConfig?.fanMode || 'AUTO'}</strong>
-                {liveConfig?.overrideExpiresAt && (
-                  <span className="ml-2 text-amber-700">
-                    (Expires in {Math.max(0, Math.round((new Date(liveConfig.overrideExpiresAt).getTime() - Date.now()) / 60000))} mins)
-                  </span>
-                )}
-              </p>
-            </div>
+      {/* Manual Actuator Controls: Cooling, Humidifier & Target Threshold */}
+      <div className="space-y-4">
+        {/* Row 1: Actuator Overrides (Cooling & Humidifier) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Cooling OFF/ON Control Bar */}
+          <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
+                  <Power className="h-4 w-4 text-[#C72C5E]" />
+                  Cooling OFF / ON Controls (GPIO 18 / 26)
+                </h3>
+                <p className="text-xs text-[#826674]">
+                  Operating mode:{' '}
+                  <strong className="text-[#C72C5E] uppercase">{liveConfig?.fanMode || 'AUTO'}</strong>
+                  {liveConfig?.overrideExpiresAt && (
+                    <span className="ml-2 text-amber-700">
+                      (Expires in {Math.max(0, Math.round((new Date(liveConfig.overrideExpiresAt).getTime() - Date.now()) / 60000))} mins)
+                    </span>
+                  )}
+                </p>
+              </div>
 
-            <div className="flex items-center gap-2">
-              {liveConfig?.fanMode !== 'AUTO' ? (
+              <div className="flex items-center gap-2">
+                {liveConfig?.fanMode !== 'AUTO' ? (
+                  <button
+                    onClick={() => returnToAuto(device.deviceId)}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Return to AUTO
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => {
+                        setOverrideTarget('FAN');
+                        setOverrideMode('FORCE_ON');
+                        setOverrideReason('Pre-cooling shuttle before boarding');
+                        setOverrideModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-[#FFF7F9] hover:bg-[#FFDBDB] text-[#C72C5E] border border-[#FDC3D1] text-xs font-semibold rounded-lg cursor-pointer"
+                    >
+                      Cooling ON
+                    </button>
+                    <button
+                      onClick={() => {
+                        setOverrideTarget('FAN');
+                        setOverrideMode('FORCE_OFF');
+                        setOverrideReason('Manual cooling fan shutdown');
+                        setOverrideModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg cursor-pointer"
+                    >
+                      Cooling OFF
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Humidifier Override Control Bar (Below Cooling Controls) */}
+          <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
+                  <Droplets className="h-4 w-4 text-sky-600" />
+                  Humidifier Override Controls (GPIO 19 / 27)
+                </h3>
+                <p className="text-xs text-[#826674]">
+                  Operating mode:{' '}
+                  <strong className="text-sky-700 uppercase">{liveConfig?.mistMode || 'AUTO'}</strong>
+                  {liveConfig?.mistOverrideExpiresAt && (
+                    <span className="ml-2 text-amber-700">
+                      (Expires in {Math.max(0, Math.round((new Date(liveConfig.mistOverrideExpiresAt).getTime() - Date.now()) / 60000))} mins)
+                    </span>
+                  )}
+                  <span className="ml-2 text-[11px] text-slate-400 hidden sm:inline">
+                    (1 Click = ON, 2 Clicks = OFF)
+                  </span>
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {liveConfig?.mistMode && liveConfig?.mistMode !== 'AUTO' ? (
+                  <button
+                    onClick={() => returnMistToAuto(device.deviceId)}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Return to AUTO
+                  </button>
+                ) : null}
                 <button
-                  onClick={() => returnToAuto(device.deviceId)}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  onClick={() => {
+                    setOverrideTarget('MIST');
+                    setOverrideMode('FORCE_ON');
+                    setOverrideReason('Manual humidifier activation (1 click pulse)');
+                    setOverrideModalOpen(true);
+                  }}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg cursor-pointer transition-colors ${
+                    liveConfig?.mistMode === 'FORCE_ON'
+                      ? 'bg-sky-600 text-white shadow-xs'
+                      : 'bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200'
+                  }`}
                 >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  Return to AUTO
+                  Humidifier ON (1 Click)
                 </button>
-              ) : (
-                <>
-                  <button
-                    onClick={() => {
-                      setOverrideTarget('FAN');
-                      setOverrideMode('FORCE_ON');
-                      setOverrideModalOpen(true);
-                    }}
-                    className="px-3 py-1.5 bg-[#FFF7F9] hover:bg-[#FFDBDB] text-[#C72C5E] border border-[#FDC3D1] text-xs font-semibold rounded-lg cursor-pointer"
-                  >
-                    Cooling ON
-                  </button>
-                  <button
-                    onClick={() => {
-                      setOverrideTarget('FAN');
-                      setOverrideMode('FORCE_OFF');
-                      setOverrideModalOpen(true);
-                    }}
-                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg cursor-pointer"
-                  >
-                    Cooling OFF
-                  </button>
-                </>
-              )}
+                <button
+                  onClick={() => {
+                    setOverrideTarget('MIST');
+                    setOverrideMode('FORCE_OFF');
+                    setOverrideReason('Manual humidifier shutdown (2 click pulses)');
+                    setOverrideModalOpen(true);
+                  }}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg cursor-pointer transition-colors ${
+                    liveConfig?.mistMode === 'FORCE_OFF'
+                      ? 'bg-slate-700 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                  }`}
+                >
+                  Humidifier OFF (2 Clicks)
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Humidity value% UP/DOWN Control Bar */}
+        {/* Row 2: Target Humidity Threshold Tuning */}
         <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
                 <CloudRain className="h-4 w-4 text-sky-600" />
-                Humidity value% UP / DOWN (GPIO 27)
+                Humidity value% UP / DOWN (Target Threshold Tuning)
               </h3>
               <p className="text-xs text-[#826674]">
                 Target Threshold:{' '}
                 <strong className="text-sky-700">{liveConfig?.humidityOnRH || 75.0}% RH</strong>
-                <span className="ml-2 text-slate-500">(Mode: {liveConfig?.mistMode || 'AUTO'})</span>
+                <span className="ml-2 text-slate-500">(Auto Mode: {liveConfig?.mistMode || 'AUTO'})</span>
               </p>
             </div>
 
@@ -524,7 +595,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                 <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 space-y-2">
                   <div className="flex items-center gap-1.5 font-bold">
                     <AlertTriangle className="h-4 w-4 text-rose-600" />
-                    Caution: FORCE_OFF disables cabin cooling
+                    Caution: FORCE_OFF disables {overrideTarget === 'FAN' ? 'cabin cooling' : 'cabin humidifier'}
                   </div>
                   <label className="flex items-center gap-2 cursor-pointer text-[11px]">
                     <input
@@ -534,7 +605,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                       onChange={(e) => setOverrideConfirmChecked(e.target.checked)}
                       className="accent-rose-600"
                     />
-                    <span>I confirm cabin safety protocols for disabling the cooling fan.</span>
+                    <span>I confirm safety protocols for disabling the {overrideTarget === 'FAN' ? 'cooling fan' : 'humidifier'}.</span>
                   </label>
                 </div>
               )}

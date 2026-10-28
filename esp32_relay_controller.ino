@@ -1,57 +1,68 @@
-/*
- * ==============================================================================
- * Florify IoT - ESP32 Climate Monitor & Actuator Firmware (Integrated)
- * Hardware:
- *   - ESP32 Development Board (NodeMCU / DevKit)
- *   - DHT11 Temperature & Relative Humidity Sensor on GPIO 4
- *   - Actuator Relay 1: Cooling Fan on GPIO 26 (Active LOW)
- *   - Actuator Relay 2: Misting Solenoid / Humidifier on GPIO 27 (Active LOW)
- *   - Status Indicator: Built-in LED on GPIO 2
- *
- * Integrated Capabilities:
- *   1. Direct Firebase Firestore REST API v1 over HTTPS (SSL/TLS):
- *      - Direct PATCH to /databases/(default)/documents/devices/{DEVICE_ID}
- *      - Direct POST to /readings subcollection for time-series charts
- *      - Periodic GET to poll remote /config/current thresholds and mode overrides
- *   2. Closed-Loop Autonomous Local Climate Automation (Hysteresis):
- *      - Fan triggers ON if temp >= tempOnC, turns OFF if temp <= tempOffC
- *      - Mist triggers ON if hum <= humOnRH, turns OFF if hum >= humOffRH
- *      - Respects cloud manual overrides ("AUTO", "FORCE_ON", "FORCE_OFF")
- *   3. Local Web Server (mDNS: http://esp32.local) with CORS:
- *      - GET /status, GET /fan?state=on|off, GET /hum?state=on|off
- *   4. Serial Monitor Commands (115200 baud):
- *      - R1 ON, R1 OFF, R2 ON, R2 OFF, ALL ON, ALL OFF, STATUS, HELP
- *   5. Glitch-free safe relay initialization on boot
- * ==============================================================================
- */
+/* ==============================================================================
+ * Florify IoT - ESP32 Climate Monitor & Actuator Firmware
+ * Module: JMD0.96D-1 OLED + DHT11 Sensor + 2-Channel Active-HIGH Relay Module
+ * 
+ * Hardware Configuration:
+ *   - ESP32 Development Board (NodeMCU / ESP32 DevKit V1)
+ *   - DHT11 Temperature & Humidity Sensor: GPIO 4
+ *   - JMD0.96D-1 0.96" Monochrome I2C OLED (SSD1306 128x64):
+ *       * SDA: GPIO 21
+ *       * SCL: GPIO 22
+ *       * VCC: 3.3V / 5V
+ *       * GND: GND
+ *       * Default I2C Address: 0x3C (auto-falls back to 0x3D)
+ *   - Relay Channel 1 (Cooling Fan): GPIO 18 [Active-HIGH continuous ON/OFF]
+ *   - Relay Channel 2 (Humidifier): GPIO 19 [Active-HIGH momentary button clicks]
+ *       * 1 click (200ms pulse) to turn ON
+ *       * 2 clicks (200ms pulse, 300ms pause, 200ms pulse) to turn OFF
+ *   - Trigger Polarity: Active-HIGH (HIGH = Energized/ON, LOW = Standby/OFF)
+ *   - Status Indicator LED: GPIO 2 (Built-in Blue LED)
+ * 
+ * Cloud Communication:
+ *   - Direct HTTPS REST client using WiFiClientSecure to Google Firebase Firestore v1
+ *   - Project: florify-c5dea | Database: (default)
+ *   - Telemetry PATCH to: /devices/{DEVICE_ID}
+ *   - Historical logging to: /devices/{DEVICE_ID}/readings
+ *   - Remote config polling from: /devices/{DEVICE_ID}/config/current
+ * ============================================================================== */
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include <WebServer.h>
-#include <ESPmDNS.h>
 #include <ArduinoJson.h>
-#include <DHT.h>
-#include <time.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include "DHT.h"
 
 // ==========================================
-// 1. HARDWARE PIN DEFINITIONS & RELAY LOGIC
+// 1. HARDWARE PIN DEFINITIONS & CONSTANTS
 // ==========================================
-#define DHTPIN            4     // DHT11 Data pin on GPIO 4
-#define DHTTYPE           DHT11 // Sensor model
+#define DHTPIN            4       // DHT11 Data Line
+#define DHTTYPE           DHT11   // Sensor type
 
-#define RELAY_FAN_PIN     26    // Relay 1: Cooling Fan (GPIO 26)
-#define RELAY_MIST_PIN    27    // Relay 2: Misting / Humidifier (GPIO 27)
-#define STATUS_LED_PIN    2     // Built-in LED indicator on GPIO 2
+#define OLED_SDA          21      // JMD0.96D-1 I2C SDA
+#define OLED_SCL          22      // JMD0.96D-1 I2C SCL
+#define SCREEN_WIDTH      128     // OLED display width in pixels
+#define SCREEN_HEIGHT     64      // OLED display height in pixels
+#define OLED_RESET        -1      // Reset pin (-1 if shared or not present)
 
-// Active LOW Relay Constants (Standard 5V optocoupled relay modules)
-#define RELAY_ON          LOW   // Coil energized (COM connects to NO)
-#define RELAY_OFF         HIGH  // Coil de-energized (COM connects to NC)
+#define RELAY_FAN_PIN     18      // Relay 1: Fan continuous ON/OFF
+#define RELAY_HUM_PIN     19      // Relay 2: Humidifier momentary clicks
+#define STATUS_LED_PIN    2       // Built-in Blue LED
+
+// Relay Trigger Polarity (Active-HIGH verified hardware)
+// false = Active-HIGH (HIGH = ON, LOW = OFF)
+// true  = Active-LOW  (LOW = ON, HIGH = OFF)
+const bool RELAY_ACTIVE_LOW = false;
+
+// Humidifier Click Pulse Durations (Milliseconds)
+const unsigned long CLICK_PULSE_MS    = 200;  // Relay energize duration (button contact press)
+const unsigned long CLICK_INTERVAL_MS = 300;  // In-between delay for 2-click OFF sequence
 
 // ==========================================
-// 2. NETWORK & FIREBASE FIRESTORE CREDENTIALS
+// 2. NETWORK & FIREBASE CREDENTIALS
 // ==========================================
-// Wi-Fi Credentials
 const char* WIFI_SSID     = "John3:16";
 const char* WIFI_PASSWORD = "JesusSaves!";
 
@@ -60,59 +71,80 @@ const char* FIREBASE_PROJECT_ID  = "florify-c5dea";
 const char* FIREBASE_DATABASE_ID = "(default)";
 const char* FIREBASE_API_KEY     = "AIzaSyBHQc-tMbFYHlvpsds7oTA635Yebr7k0_o";
 
-// Device Identification
-const char* DEVICE_ID       = "ESP32-FLORIFY-01";
-const char* FIRMWARE_VER    = "v2.3.0-florify-rest";
+// Unique Device ID registered in the Florify Dashboard
+const char* DEVICE_ID        = "ESP32-FLORIFY-01";
+const char* FIRMWARE_VERSION = "v3.2.0-active-high-duo";
 
 // ==========================================
-// 3. CLOSED-LOOP CLIMATE AUTOMATION THRESHOLDS
+// 3. OBJECTS & GLOBAL STATE VARIABLES
 // ==========================================
-struct DeviceThresholds {
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+DHT dht(DHTPIN, DHTTYPE);
+
+// Humidifier Click State Machine
+enum HumClickState {
+  HUM_IDLE,
+  HUM_FIRST_CLICK,
+  HUM_WAIT_INTERVAL,
+  HUM_SECOND_CLICK
+};
+
+HumClickState humClickState = HUM_IDLE;
+unsigned long humClickTimer = 0;
+bool humTargetIsOff = false;
+bool currentHumState = false; // Expected humidifier state (true = ON, false = OFF)
+
+// Closed-loop Climate Thresholds & Modes
+struct DeviceConfig {
   bool tempEnabled = true;
-  float tempOnC    = 40.0;    // Fan turns ON if temp >= 40.0 °C
-  float tempOffC   = 38.0;    // Fan turns OFF if temp <= 38.0 °C
+  float tempOnC    = 40.0;    // Fan turns ON if Temp >= 40.0 °C
+  float tempOffC   = 38.0;    // Fan turns OFF if Temp <= 38.0 °C
 
-  bool humEnabled  = false;   // Mist automation disabled by default
-  float humOnRH    = 40.0;    // Mist turns ON if humidity <= 40.0 % RH (too dry)
-  float humOffRH   = 55.0;    // Mist turns OFF if humidity >= 55.0 % RH (satisfied)
+  bool humEnabled  = false;   // Humidifier auto-mode disabled by default
+  float humOnRH    = 45.0;    // Humidifier turns ON if Humidity <= 45% RH
+  float humOffRH   = 60.0;    // Humidifier turns OFF if Humidity >= 60% RH
 
   String fanMode   = "AUTO";      // "AUTO", "FORCE_ON", "FORCE_OFF"
   String mistMode  = "FORCE_OFF"; // "AUTO", "FORCE_ON", "FORCE_OFF"
 };
 
-DeviceThresholds currentConfig;
-DHT dht(DHTPIN, DHTTYPE);
+DeviceConfig currentConfig;
 
-// ==========================================
-// 4. TIMING & SYSTEM STATE
-// ==========================================
-const unsigned long TELEMETRY_INTERVAL_MS = 6000;   // Push readings to Firestore every 6s
-const unsigned long CONFIG_POLL_INTERVAL_MS = 15000; // Poll cloud config every 15s
-const unsigned long WIFI_RECONNECT_INTERVAL = 10000; // Wi-Fi check interval
+// Telemetry & Timing State
+float lastTempC = NAN;
+float lastHumRH = NAN;
+bool isSensorHealthy = false;
+bool isFanActive = false;
+bool oledReady = false;
 
-float latestTemperatureC = 0.0f;
-float latestHumidityRH   = 0.0f;
-bool isFanActive         = false;
-bool isMistActive        = false;
-bool sensorHealthy       = false;
-unsigned long sensorConsecutiveErrors = 0;
-unsigned long lastValidDhtReadMs = 0;
-unsigned long lastTelemetryMillis = 0;
+unsigned long lastSensorReadMillis = 0;
+unsigned long lastTelemetryMillis  = 0;
 unsigned long lastConfigPollMillis = 0;
-unsigned long lastWifiCheckMs     = 0;
 
-// Local Web Server on Port 80
-WebServer server(80);
+const unsigned long SENSOR_INTERVAL_MS      = 2500;   // Read DHT11 every 2.5 seconds
+const unsigned long TELEMETRY_INTERVAL_MS   = 6000;   // Push to Firestore every 6 seconds
+const unsigned long CONFIG_POLL_INTERVAL_MS = 15000;  // Poll cloud config every 15 seconds
 
 // ==========================================
-// 5. HELPER: UTC ISO-8601 TIMESTAMP (NTP)
+// 4. LOW-LEVEL RELAY CONTROL (ACTIVE-HIGH)
+// ==========================================
+void setRelay(int pin, bool on) {
+  if (RELAY_ACTIVE_LOW) {
+    digitalWrite(pin, on ? LOW : HIGH);
+  } else {
+    digitalWrite(pin, on ? HIGH : LOW);
+  }
+}
+
+// ==========================================
+// 5. HELPER: ISO-8601 UTC TIMESTAMP
 // ==========================================
 String getIsoTimestamp() {
   time_t now;
   time(&now);
   struct tm timeinfo;
   if (!gmtime_r(&now, &timeinfo) || now < 100000) {
-    return "2026-10-24T00:00:00Z";
+    return "2026-10-28T00:00:00Z";
   }
   char buf[30];
   strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
@@ -120,55 +152,149 @@ String getIsoTimestamp() {
 }
 
 // ==========================================
-// 6. HELPER: CORS PREFLIGHT
+// 6. HUMIDIFIER CLICK ENGINE (NON-BLOCKING)
 // ==========================================
-void sendCorsHeaders() {
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  server.sendHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-}
+void triggerHumidifier(bool turnOn) {
+  if (currentHumState == turnOn && humClickState == HUM_IDLE) {
+    return; // Already in expected state
+  }
 
-void handleOptionsPreflight() {
-  sendCorsHeaders();
-  server.send(204);
-}
-
-// ==========================================
-// 7. SENSOR READING & VALIDATION
-// ==========================================
-void readDhtSensor(bool force = false) {
-  unsigned long now = millis();
-  if (!force && (now - lastValidDhtReadMs < 2000)) {
+  if (humClickState != HUM_IDLE) {
+    Serial.println(F("[Humidifier] Busy executing pulse sequence. Command queued."));
     return;
   }
 
-  float hum  = dht.readHumidity();
-  float temp = dht.readTemperature();
+  currentHumState = turnOn;
+  humTargetIsOff = !turnOn;
 
-  if (isnan(hum) || isnan(temp) || temp < -20.0f || temp > 80.0f || hum < 0.0f || hum > 100.0f) {
-    sensorConsecutiveErrors++;
-    sensorHealthy = false;
-    Serial.printf("[DHT11 ERROR] Reading #%lu invalid (Temp: %.1f C, Hum: %.1f %%)\n",
-                  sensorConsecutiveErrors, temp, hum);
-  } else {
-    latestTemperatureC = temp;
-    latestHumidityRH   = hum;
-    sensorHealthy      = true;
-    sensorConsecutiveErrors = 0;
-    lastValidDhtReadMs = now;
+  // Start 1st click pulse (energize relay: HIGH)
+  setRelay(RELAY_HUM_PIN, true);
+  humClickTimer = millis();
+  humClickState = HUM_FIRST_CLICK;
+
+  Serial.println(turnOn
+    ? F("[Humidifier] Sending 1 ON click...")
+    : F("[Humidifier] Sending 2 OFF clicks (300ms pause)..."));
+}
+
+void updateHumidifierStateMachine() {
+  if (humClickState == HUM_IDLE) return;
+
+  unsigned long now = millis();
+
+  switch (humClickState) {
+    case HUM_FIRST_CLICK:
+      if (now - humClickTimer >= CLICK_PULSE_MS) {
+        // Release 1st click (de-energize relay: LOW)
+        setRelay(RELAY_HUM_PIN, false);
+        humClickTimer = now;
+
+        if (humTargetIsOff) {
+          humClickState = HUM_WAIT_INTERVAL;
+          Serial.println(F("[Humidifier] OFF click 1 released. Waiting 300ms pause..."));
+        } else {
+          humClickState = HUM_IDLE;
+          Serial.println(F("[Humidifier] ON 1-click completed. State: ON"));
+        }
+      }
+      break;
+
+    case HUM_WAIT_INTERVAL:
+      if (now - humClickTimer >= CLICK_INTERVAL_MS) {
+        // Start 2nd click pulse (energize relay: HIGH)
+        setRelay(RELAY_HUM_PIN, true);
+        humClickTimer = now;
+        humClickState = HUM_SECOND_CLICK;
+        Serial.println(F("[Humidifier] OFF click 2 started."));
+      }
+      break;
+
+    case HUM_SECOND_CLICK:
+      if (now - humClickTimer >= CLICK_PULSE_MS) {
+        // Release 2nd click (de-energize relay: LOW)
+        setRelay(RELAY_HUM_PIN, false);
+        humClickState = HUM_IDLE;
+        Serial.println(F("[Humidifier] OFF 2-click completed. State: OFF"));
+      }
+      break;
+
+    default:
+      setRelay(RELAY_HUM_PIN, false);
+      humClickState = HUM_IDLE;
+      break;
   }
 }
 
 // ==========================================
-// 8. CLOSED-LOOP HYSTERESIS ACTUATOR EVALUATION
+// 7. JMD0.96D-1 OLED UI RENDERING ENGINE
+// ==========================================
+void renderOledDisplay() {
+  if (!oledReady) return;
+
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+
+  // Line 0: Header & WiFi Status
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print(F("FLORIFY CLIMATE"));
+
+  display.setCursor(95, 0);
+  if (WiFi.status() == WL_CONNECTED) {
+    display.print(F("[WIFI]"));
+  } else {
+    display.print(F("[OFFL]"));
+  }
+  display.drawLine(0, 11, 127, 11, SSD1306_WHITE);
+
+  // Line 1: Temperature Row
+  display.setCursor(0, 16);
+  display.print(F("Temp: "));
+  if (isSensorHealthy && !isnan(lastTempC)) {
+    display.print(lastTempC, 1);
+    display.print(F(" C"));
+  } else {
+    display.print(F("-- C"));
+  }
+
+  // Line 2: Humidity Row
+  display.setCursor(0, 28);
+  display.print(F("Humidity: "));
+  if (isSensorHealthy && !isnan(lastHumRH)) {
+    display.print(lastHumRH, 1);
+    display.print(F(" %"));
+  } else {
+    display.print(F("-- %"));
+  }
+
+  display.drawLine(0, 40, 127, 40, SSD1306_WHITE);
+
+  // Line 3: Fan Status
+  display.setCursor(0, 44);
+  display.printf("Fan: %s (%s)", isFanActive ? "ON " : "OFF", currentConfig.fanMode == "AUTO" ? "AUTO" : "MAN");
+
+  // Line 4: Humidifier Status
+  display.setCursor(0, 54);
+  if (humClickState != HUM_IDLE) {
+    display.print(F("Humidifier: CLICKING.."));
+  } else {
+    display.printf("Humidifier: %s", currentHumState ? "ON" : "OFF");
+  }
+
+  display.display();
+}
+
+// ==========================================
+// 8. CLOSED-LOOP ACTUATION EVALUATION
 // ==========================================
 void evaluateActuators(float tempC, float humRH) {
-  // --- Fan Actuator Logic (Relay 1 - GPIO 26) ---
+  // A. Cooling Fan Control (GPIO 18)
   if (currentConfig.fanMode == "FORCE_ON") {
     isFanActive = true;
   } else if (currentConfig.fanMode == "FORCE_OFF") {
     isFanActive = false;
-  } else if (currentConfig.tempEnabled) {
+  } else if (currentConfig.tempEnabled && isSensorHealthy && !isnan(tempC)) {
+    // Local AUTO hysteresis
     if (tempC >= currentConfig.tempOnC) {
       isFanActive = true;
     } else if (tempC <= currentConfig.tempOffC) {
@@ -178,45 +304,78 @@ void evaluateActuators(float tempC, float humRH) {
     isFanActive = false;
   }
 
-  // --- Mist Actuator Logic (Relay 2 - GPIO 27) ---
+  // Apply to Fan Relay (Active-HIGH)
+  setRelay(RELAY_FAN_PIN, isFanActive);
+
+  // B. Humidifier Momentary Control (GPIO 19)
+  bool targetHumState = false;
   if (currentConfig.mistMode == "FORCE_ON") {
-    isMistActive = true;
+    targetHumState = true;
   } else if (currentConfig.mistMode == "FORCE_OFF") {
-    isMistActive = false;
-  } else if (currentConfig.mistMode == "AUTO" && currentConfig.humEnabled) {
+    targetHumState = false;
+  } else if (currentConfig.mistMode == "AUTO" && currentConfig.humEnabled && isSensorHealthy && !isnan(humRH)) {
     if (humRH <= currentConfig.humOnRH) {
-      isMistActive = true;
+      targetHumState = true;
     } else if (humRH >= currentConfig.humOffRH) {
-      isMistActive = false;
+      targetHumState = false;
     }
   } else {
-    isMistActive = false;
+    targetHumState = false;
   }
 
-  // Apply to physical relays (Active LOW: LOW = ON, HIGH = OFF)
-  digitalWrite(RELAY_FAN_PIN, isFanActive ? RELAY_ON : RELAY_OFF);
-  digitalWrite(RELAY_MIST_PIN, isMistActive ? RELAY_ON : RELAY_OFF);
-
-  Serial.printf("[Actuators] Fan (GPIO 26): %s | Mist (GPIO 27): %s | Modes: Fan=%s, Mist=%s\n",
-                isFanActive ? "ON" : "OFF",
-                isMistActive ? "ON" : "OFF",
-                currentConfig.fanMode.c_str(),
-                currentConfig.mistMode.c_str());
+  // Trigger pulse sequence if target differs from current expected state
+  if (targetHumState != currentHumState) {
+    triggerHumidifier(targetHumState);
+  }
 }
 
 // ==========================================
-// 9. DIRECT FIREBASE FIRESTORE REST API (v1)
+// 9. WIFI & NTP SYNCHRONIZATION
 // ==========================================
+void connectWiFi() {
+  if (WiFi.status() == WL_CONNECTED) return;
 
-// Update device summary document in Firestore
+  Serial.print(F("[WiFi] Connecting to: "));
+  Serial.println(WIFI_SSID);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(F("."));
+    digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN));
+    attempts++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println(F("\n[WiFi] Connected!"));
+    Serial.print(F("[WiFi] IP: "));
+    Serial.println(WiFi.localIP());
+    digitalWrite(STATUS_LED_PIN, HIGH);
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  } else {
+    Serial.println(F("\n[WiFi] Timeout. Operating in offline automation mode."));
+    digitalWrite(STATUS_LED_PIN, LOW);
+  }
+}
+
+// ==========================================
+// 10. FIREBASE FIRESTORE REST: TELEMETRY PUSH
+// ==========================================
 void sendTelemetryToFirestore(float tempC, float humRH) {
-  if (WiFi.status() != WL_CONNECTED) return;
+  if (WiFi.status() != WL_CONNECTED) {
+    connectWiFi();
+    if (WiFi.status() != WL_CONNECTED) return;
+  }
 
   WiFiClientSecure client;
-  client.setInsecure(); // SSL handshake for firestore.googleapis.com
+  client.setInsecure(); // Direct TLS connection
+
   HTTPClient https;
 
-  // Build Firestore REST Document PATCH URL with updateMask
+  // 1. Update Device Summary Document (PATCH)
   String patchUrl = "https://firestore.googleapis.com/v1/projects/";
   patchUrl += FIREBASE_PROJECT_ID;
   patchUrl += "/databases/";
@@ -232,47 +391,40 @@ void sendTelemetryToFirestore(float tempC, float humRH) {
   patchUrl += "&updateMask.fieldPaths=lastSeenAt";
   patchUrl += "&updateMask.fieldPaths=reportedMode";
   patchUrl += "&updateMask.fieldPaths=firmwareVersion";
-  patchUrl += "&updateMask.fieldPaths=sensorType";
-  patchUrl += "&updateMask.fieldPaths=active";
-  patchUrl += "&updateMask.fieldPaths=displayName";
   patchUrl += "&key=";
   patchUrl += FIREBASE_API_KEY;
 
   if (https.begin(client, patchUrl)) {
     https.addHeader("Content-Type", "application/json");
-    https.setTimeout(5000);
+
     String nowIso = getIsoTimestamp();
 
-    JsonDocument doc;
-    JsonObject fields = doc["fields"].to<JsonObject>();
+    StaticJsonDocument<512> doc;
+    JsonObject fields = doc.createNestedObject("fields");
 
     fields["latestTemperatureC"]["doubleValue"] = tempC;
     fields["latestHumidityRH"]["doubleValue"]    = humRH;
     fields["latestFanState"]["stringValue"]       = isFanActive ? "ON" : "OFF";
-    fields["latestMistState"]["stringValue"]      = isMistActive ? "ON" : "OFF";
+    fields["latestMistState"]["stringValue"]      = currentHumState ? "ON" : "OFF";
     fields["status"]["stringValue"]               = "ONLINE";
     fields["lastReadingAt"]["stringValue"]        = nowIso;
     fields["lastSeenAt"]["stringValue"]           = nowIso;
     fields["reportedMode"]["stringValue"]         = currentConfig.fanMode;
-    fields["firmwareVersion"]["stringValue"]      = FIRMWARE_VER;
-    fields["sensorType"]["stringValue"]           = "DHT11";
-    fields["active"]["booleanValue"]              = true;
-    fields["displayName"]["stringValue"]         = String("ESP32 Climate (") + DEVICE_ID + ")";
+    fields["firmwareVersion"]["stringValue"]      = FIRMWARE_VERSION;
 
     String requestBody;
     serializeJson(doc, requestBody);
 
     int httpCode = https.PATCH(requestBody);
     if (httpCode == HTTP_CODE_OK || httpCode == 200) {
-      Serial.printf("[Firestore] Summary PATCH ok: %.1f C, %.1f %% RH (Fan:%s, Mist:%s)\n",
-                    tempC, humRH, isFanActive ? "ON" : "OFF", isMistActive ? "ON" : "OFF");
+      Serial.println(F("[Firestore] Telemetry summary pushed successfully."));
     } else {
-      Serial.printf("[Firestore] Summary PATCH returned HTTP %d\n", httpCode);
+      Serial.printf("[Firestore] Telemetry PATCH failed (Code %d)\n", httpCode);
     }
     https.end();
   }
 
-  // Append historical time-series sample to /readings subcollection
+  // 2. Append Time-Series Sample to /readings Subcollection (POST)
   String readingUrl = "https://firestore.googleapis.com/v1/projects/";
   readingUrl += FIREBASE_PROJECT_ID;
   readingUrl += "/databases/";
@@ -285,33 +437,74 @@ void sendTelemetryToFirestore(float tempC, float humRH) {
 
   if (https.begin(client, readingUrl)) {
     https.addHeader("Content-Type", "application/json");
-    https.setTimeout(5000);
 
-    JsonDocument readingDoc;
-    JsonObject rFields = readingDoc["fields"].to<JsonObject>();
+    StaticJsonDocument<512> rDoc;
+    JsonObject rFields = rDoc.createNestedObject("fields");
 
-    rFields["temperatureC"]["doubleValue"]     = tempC;
-    rFields["humidityRH"]["doubleValue"]        = humRH;
-    rFields["fanState"]["stringValue"]          = isFanActive ? "ON" : "OFF";
-    rFields["mistState"]["stringValue"]         = isMistActive ? "ON" : "OFF";
-    rFields["operatingMode"]["stringValue"]     = currentConfig.fanMode;
-    rFields["sensorHealthy"]["booleanValue"]    = sensorHealthy;
-    rFields["receivedAt"]["stringValue"]        = getIsoTimestamp();
+    rFields["temperatureC"]["doubleValue"]  = tempC;
+    rFields["humidityRH"]["doubleValue"]     = humRH;
+    rFields["fanState"]["stringValue"]       = isFanActive ? "ON" : "OFF";
+    rFields["mistState"]["stringValue"]      = currentHumState ? "ON" : "OFF";
+    rFields["operatingMode"]["stringValue"]  = currentConfig.fanMode;
+    rFields["sensorHealthy"]["booleanValue"] = isSensorHealthy;
+    rFields["receivedAt"]["stringValue"]     = getIsoTimestamp();
 
-    String readingBody;
-    serializeJson(readingDoc, readingBody);
+    String rBody;
+    serializeJson(rDoc, rBody);
 
-    int rCode = https.POST(readingBody);
+    int rCode = https.POST(rBody);
     if (rCode == HTTP_CODE_OK || rCode == 200) {
-      Serial.println("[Firestore] Time-series sample logged to /readings.");
-    } else {
-      Serial.printf("[Firestore] Readings POST returned HTTP %d\n", rCode);
+      Serial.println(F("[Firestore] Time-series sample logged to /readings."));
     }
     https.end();
   }
 }
 
-// Poll cloud configuration and dynamic threshold updates
+// ==========================================
+// 11. FIREBASE FIRESTORE: BOOTSTRAP DEFAULT CONFIG
+// ==========================================
+void bootstrapRemoteConfig() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient https;
+  String patchUrl = "https://firestore.googleapis.com/v1/projects/";
+  patchUrl += FIREBASE_PROJECT_ID;
+  patchUrl += "/databases/";
+  patchUrl += FIREBASE_DATABASE_ID;
+  patchUrl += "/documents/devices/";
+  patchUrl += DEVICE_ID;
+  patchUrl += "/config/current?key=";
+  patchUrl += FIREBASE_API_KEY;
+
+  if (https.begin(client, patchUrl)) {
+    https.addHeader("Content-Type", "application/json");
+
+    StaticJsonDocument<512> doc;
+    JsonObject fields = doc.createNestedObject("fields");
+
+    fields["temperatureOnC"]["doubleValue"] = 40.0;
+    fields["temperatureOffC"]["doubleValue"] = 38.0;
+    fields["humidityOnRH"]["doubleValue"]   = 45.0;
+    fields["humidityOffRH"]["doubleValue"]  = 60.0;
+    fields["fanMode"]["stringValue"]        = "AUTO";
+    fields["mistMode"]["stringValue"]       = "FORCE_OFF";
+    fields["updatedAt"]["stringValue"]      = getIsoTimestamp();
+
+    String body;
+    serializeJson(doc, body);
+
+    int code = https.PATCH(body);
+    Serial.printf("[Cloud Sync] Default config bootstrap response: %d\n", code);
+    https.end();
+  }
+}
+
+// ==========================================
+// 12. FIREBASE FIRESTORE REST: POLL CONFIG
+// ==========================================
 void pollRemoteConfig() {
   if (WiFi.status() != WL_CONNECTED) return;
 
@@ -329,11 +522,10 @@ void pollRemoteConfig() {
   configUrl += FIREBASE_API_KEY;
 
   if (https.begin(client, configUrl)) {
-    https.setTimeout(5000);
     int httpCode = https.GET();
     if (httpCode == 200) {
       String payload = https.getString();
-      JsonDocument doc;
+      StaticJsonDocument<1024> doc;
       DeserializationError err = deserializeJson(doc, payload);
 
       if (!err && doc.containsKey("fields")) {
@@ -368,323 +560,237 @@ void pollRemoteConfig() {
           }
         }
         if (f.containsKey("fanMode") && f["fanMode"].containsKey("stringValue")) {
-          currentConfig.fanMode = f["fanMode"]["stringValue"].as<String>();
+          String newFanMode = f["fanMode"]["stringValue"].as<String>();
+          if (newFanMode != currentConfig.fanMode) {
+            Serial.printf("[Cloud Sync] Fan mode updated from %s to %s\n", currentConfig.fanMode.c_str(), newFanMode.c_str());
+            currentConfig.fanMode = newFanMode;
+          }
         }
         if (f.containsKey("mistMode") && f["mistMode"].containsKey("stringValue")) {
-          currentConfig.mistMode = f["mistMode"]["stringValue"].as<String>();
+          String newMistMode = f["mistMode"]["stringValue"].as<String>();
+          if (newMistMode != currentConfig.mistMode) {
+            Serial.printf("[Cloud Sync] Mist mode updated from %s to %s\n", currentConfig.mistMode.c_str(), newMistMode.c_str());
+            currentConfig.mistMode = newMistMode;
+          }
         }
 
-        Serial.printf("[Config Sync] Temp: On=%.1f C Off=%.1f C | Hum: On=%.1f %% Off=%.1f %% | Modes: Fan=%s, Mist=%s\n",
-                      currentConfig.tempOnC, currentConfig.tempOffC,
-                      currentConfig.humOnRH, currentConfig.humOffRH,
-                      currentConfig.fanMode.c_str(),
-                      currentConfig.mistMode.c_str());
+        Serial.printf("[Cloud Sync] Config: FanMode=%s | MistMode=%s\n",
+          currentConfig.fanMode.c_str(), currentConfig.mistMode.c_str());
+
+        // Immediately evaluate actuators with latest remote config
+        evaluateActuators(lastTempC, lastHumRH);
+        renderOledDisplay();
       }
+    } else if (httpCode == 404) {
+      Serial.println(F("[Cloud Sync] Config document 404. Bootstrapping initial document..."));
+      bootstrapRemoteConfig();
     }
     https.end();
   }
 }
 
 // ==========================================
-// 10. LOCAL WEB SERVER REQUEST HANDLERS
+// 13. SERIAL COMMAND PARSER (TESTING / DIAGNOSTICS)
 // ==========================================
+void handleSerialCommands() {
+  if (!Serial.available()) return;
 
-// GET /status
-void handleGetStatus() {
-  sendCorsHeaders();
-  readDhtSensor();
+  String cmd = Serial.readStringUntil('\n');
+  cmd.trim();
+  cmd.toUpperCase();
 
-  JsonDocument doc;
-  doc["deviceId"]            = DEVICE_ID;
-  doc["firmwareVersion"]     = FIRMWARE_VER;
-  doc["temperatureC"]        = sensorHealthy ? latestTemperatureC : (float)0.0;
-  doc["humidityRH"]          = sensorHealthy ? latestHumidityRH : (float)0.0;
-  doc["sensorHealthy"]       = sensorHealthy;
-  doc["fanState"]            = isFanActive ? "ON" : "OFF";
-  doc["mistState"]           = isMistActive ? "ON" : "OFF";
-  doc["fanMode"]             = currentConfig.fanMode;
-  doc["mistMode"]            = currentConfig.mistMode;
-  doc["tempOnThreshold"]     = currentConfig.tempOnC;
-  doc["tempOffThreshold"]    = currentConfig.tempOffC;
-  doc["humOnThreshold"]      = currentConfig.humOnRH;
-  doc["humOffThreshold"]     = currentConfig.humOffRH;
-  doc["uptimeSec"]           = millis() / 1000;
-  doc["freeHeapBytes"]       = ESP.getFreeHeap();
-  doc["wifiRssi"]            = WiFi.RSSI();
-  doc["lastReadElapsedMs"]   = millis() - lastValidDhtReadMs;
-
-  String response;
-  serializeJson(doc, response);
-  server.send(200, "application/json", response);
-}
-
-// GET /fan?state=on|off
-void handleFanRequest() {
-  sendCorsHeaders();
-  if (!server.hasArg("state")) {
-    server.send(400, "application/json", "{\"error\":\"Missing state (?state=on or ?state=off)\"}");
-    return;
-  }
-
-  String state = server.arg("state");
-  state.toLowerCase();
-
-  if (state == "on") {
+  if (cmd == "FAN ON") {
     currentConfig.fanMode = "FORCE_ON";
     isFanActive = true;
-    digitalWrite(RELAY_FAN_PIN, RELAY_ON);
-    server.send(200, "application/json", "{\"status\":\"OK\",\"fanState\":\"ON\",\"mode\":\"FORCE_ON\"}");
-  } else if (state == "off") {
+    setRelay(RELAY_FAN_PIN, true);
+    renderOledDisplay();
+    Serial.println(F("Fan turned ON."));
+  } else if (cmd == "FAN OFF") {
     currentConfig.fanMode = "FORCE_OFF";
     isFanActive = false;
-    digitalWrite(RELAY_FAN_PIN, RELAY_OFF);
-    server.send(200, "application/json", "{\"status\":\"OK\",\"fanState\":\"OFF\",\"mode\":\"FORCE_OFF\"}");
-  } else if (state == "auto") {
+    setRelay(RELAY_FAN_PIN, false);
+    renderOledDisplay();
+    Serial.println(F("Fan turned OFF."));
+  } else if (cmd == "FAN AUTO") {
     currentConfig.fanMode = "AUTO";
-    evaluateActuators(latestTemperatureC, latestHumidityRH);
-    server.send(200, "application/json", "{\"status\":\"OK\",\"mode\":\"AUTO\"}");
-  } else {
-    server.send(400, "application/json", "{\"error\":\"Invalid state. Expected 'on', 'off', or 'auto'\"}");
-  }
-}
-
-// GET /hum?state=on|off
-void handleHumRequest() {
-  sendCorsHeaders();
-  if (!server.hasArg("state")) {
-    server.send(400, "application/json", "{\"error\":\"Missing state (?state=on or ?state=off)\"}");
-    return;
-  }
-
-  String state = server.arg("state");
-  state.toLowerCase();
-
-  if (state == "on") {
-    currentConfig.mistMode = "FORCE_ON";
-    isMistActive = true;
-    digitalWrite(RELAY_MIST_PIN, RELAY_ON);
-    server.send(200, "application/json", "{\"status\":\"OK\",\"mistState\":\"ON\",\"mode\":\"FORCE_ON\"}");
-  } else if (state == "off") {
-    currentConfig.mistMode = "FORCE_OFF";
-    isMistActive = false;
-    digitalWrite(RELAY_MIST_PIN, RELAY_OFF);
-    server.send(200, "application/json", "{\"status\":\"OK\",\"mistState\":\"OFF\",\"mode\":\"FORCE_OFF\"}");
-  } else if (state == "auto") {
+    evaluateActuators(lastTempC, lastHumRH);
+    renderOledDisplay();
+    Serial.println(F("Fan returned to AUTO mode."));
+  } else if (cmd == "HUM ON") {
+    if (currentHumState) {
+      Serial.println(F("Humidifier is already expected ON."));
+    } else {
+      triggerHumidifier(true);
+      renderOledDisplay();
+    }
+  } else if (cmd == "HUM OFF") {
+    if (!currentHumState) {
+      Serial.println(F("Humidifier is already expected OFF."));
+    } else {
+      triggerHumidifier(false);
+      renderOledDisplay();
+    }
+  } else if (cmd == "HUM AUTO") {
     currentConfig.mistMode = "AUTO";
-    evaluateActuators(latestTemperatureC, latestHumidityRH);
-    server.send(200, "application/json", "{\"status\":\"OK\",\"mode\":\"AUTO\"}");
-  } else {
-    server.send(400, "application/json", "{\"error\":\"Invalid state. Expected 'on', 'off', or 'auto'\"}");
-  }
-}
-
-// ==========================================
-// 11. SERIAL MONITOR INTERFACE
-// ==========================================
-void printHelp() {
-  Serial.println("\n=== FLORIFY ESP32 CLIMATE CONTROLLER ===");
-  Serial.println("R1 ON   - Force Cooling Fan ON (GPIO 26)");
-  Serial.println("R1 OFF  - Force Cooling Fan OFF");
-  Serial.println("R2 ON   - Force Mist / Humidifier ON (GPIO 27)");
-  Serial.println("R2 OFF  - Force Mist / Humidifier OFF");
-  Serial.println("ALL ON  - Force both Fan & Mist ON");
-  Serial.println("ALL OFF - Force both Fan & Mist OFF");
-  Serial.println("AUTO    - Return actuators to automatic climate regulation");
-  Serial.println("STATUS  - Display current temperature, humidity & thresholds");
-  Serial.println("HELP    - Show this command reference");
-  Serial.println("========================================\n");
-}
-
-void handleSerialCommands() {
-  if (Serial.available()) {
-    String cmd = Serial.readStringUntil('\n');
-    cmd.trim();
-    cmd.toUpperCase();
-
-    if (cmd == "R1 ON") {
-      currentConfig.fanMode = "FORCE_ON";
-      isFanActive = true;
-      digitalWrite(RELAY_FAN_PIN, RELAY_ON);
-      Serial.println("[Serial] Fan forced ON (GPIO 26).");
-    } else if (cmd == "R1 OFF") {
-      currentConfig.fanMode = "FORCE_OFF";
-      isFanActive = false;
-      digitalWrite(RELAY_FAN_PIN, RELAY_OFF);
-      Serial.println("[Serial] Fan forced OFF (GPIO 26).");
-    } else if (cmd == "R2 ON") {
-      currentConfig.mistMode = "FORCE_ON";
-      isMistActive = true;
-      digitalWrite(RELAY_MIST_PIN, RELAY_ON);
-      Serial.println("[Serial] Mist forced ON (GPIO 27).");
-    } else if (cmd == "R2 OFF") {
-      currentConfig.mistMode = "FORCE_OFF";
-      isMistActive = false;
-      digitalWrite(RELAY_MIST_PIN, RELAY_OFF);
-      Serial.println("[Serial] Mist forced OFF (GPIO 27).");
-    } else if (cmd == "ALL ON") {
-      currentConfig.fanMode = "FORCE_ON";
-      currentConfig.mistMode = "FORCE_ON";
-      isFanActive = true;
-      isMistActive = true;
-      digitalWrite(RELAY_FAN_PIN, RELAY_ON);
-      digitalWrite(RELAY_MIST_PIN, RELAY_ON);
-      Serial.println("[Serial] Both Fan & Mist forced ON.");
-    } else if (cmd == "ALL OFF") {
-      currentConfig.fanMode = "FORCE_OFF";
-      currentConfig.mistMode = "FORCE_OFF";
-      isFanActive = false;
-      isMistActive = false;
-      digitalWrite(RELAY_FAN_PIN, RELAY_OFF);
-      digitalWrite(RELAY_MIST_PIN, RELAY_OFF);
-      Serial.println("[Serial] Both Fan & Mist forced OFF.");
-    } else if (cmd == "AUTO") {
-      currentConfig.fanMode = "AUTO";
-      currentConfig.mistMode = "AUTO";
-      evaluateActuators(latestTemperatureC, latestHumidityRH);
-      Serial.println("[Serial] Actuators returned to AUTO climate loop.");
-    } else if (cmd == "STATUS") {
-      Serial.printf("[Status] Temp: %.1f C | Hum: %.1f %% | Fan: %s (%s) | Mist: %s (%s)\n",
-                    latestTemperatureC, latestHumidityRH,
-                    isFanActive ? "ON" : "OFF", currentConfig.fanMode.c_str(),
-                    isMistActive ? "ON" : "OFF", currentConfig.mistMode.c_str());
-    } else if (cmd == "HELP") {
-      printHelp();
-    } else if (cmd.length() > 0) {
-      Serial.println("Unknown command. Type HELP for commands.");
+    evaluateActuators(lastTempC, lastHumRH);
+    renderOledDisplay();
+    Serial.println(F("Humidifier returned to AUTO mode."));
+  } else if (cmd == "STATUS") {
+    Serial.println();
+    Serial.println(F("===== CURRENT STATUS ====="));
+    Serial.print(F("Device ID: ")); Serial.println(DEVICE_ID);
+    Serial.print(F("Firmware: ")); Serial.println(FIRMWARE_VERSION);
+    Serial.print(F("WiFi: ")); Serial.println(WiFi.status() == WL_CONNECTED ? "CONNECTED" : "DISCONNECTED");
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.print(F("IP: ")); Serial.println(WiFi.localIP());
     }
+    Serial.print(F("Temperature: "));
+    if (isnan(lastTempC)) Serial.println(F("No reading"));
+    else { Serial.print(lastTempC, 1); Serial.println(F(" C")); }
+    Serial.print(F("Humidity: "));
+    if (isnan(lastHumRH)) Serial.println(F("No reading"));
+    else { Serial.print(lastHumRH, 1); Serial.println(F(" %")); }
+    Serial.print(F("Fan: ")); Serial.printf("%s (Mode: %s)\n", isFanActive ? "ON" : "OFF", currentConfig.fanMode.c_str());
+    Serial.print(F("Humidifier expected state: ")); Serial.printf("%s (Mode: %s)\n", currentHumState ? "ON" : "OFF", currentConfig.mistMode.c_str());
+    Serial.println(F("==========================="));
+    Serial.println();
+  } else if (cmd == "HELP") {
+    Serial.println();
+    Serial.println(F("===== ESP32 CLIMATE COMMANDS ====="));
+    Serial.println(F("FAN ON     - Turn fan on"));
+    Serial.println(F("FAN OFF    - Turn fan off"));
+    Serial.println(F("FAN AUTO   - Return fan to auto threshold"));
+    Serial.println(F("HUM ON     - Simulate 1 button click"));
+    Serial.println(F("HUM OFF    - Simulate 2 clicks (300ms pause)"));
+    Serial.println(F("HUM AUTO   - Return humidifier to auto threshold"));
+    Serial.println(F("STATUS     - Show current status"));
+    Serial.println(F("HELP       - Show commands"));
+    Serial.println(F("=================================="));
+    Serial.println();
+  } else if (cmd.length() > 0) {
+    Serial.println(F("Unknown command. Type HELP."));
   }
 }
 
 // ==========================================
-// 12. WIFI & NTP CONNECTION ROUTINE
-// ==========================================
-void connectWiFi() {
-  if (WiFi.status() == WL_CONNECTED) return;
-
-  Serial.printf("[WiFi] Connecting to SSID: %s\n", WIFI_SSID);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  unsigned long startMs = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - startMs < 15000)) {
-    delay(400);
-    Serial.print(".");
-    digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN));
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    digitalWrite(STATUS_LED_PIN, HIGH);
-    Serial.println("\n[WiFi] Connected successfully!");
-    Serial.printf("[WiFi] IP Address: %s\n", WiFi.localIP().toString().c_str());
-    Serial.printf("[WiFi] RSSI: %d dBm\n", WiFi.RSSI());
-
-    // Sync NTP Time for RFC-3339 / ISO-8601 timestamps
-    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-    Serial.println("[NTP] Time synchronization requested.");
-
-    // Start mDNS responder (http://esp32.local)
-    if (MDNS.begin("esp32")) {
-      Serial.println("[mDNS] Responder active at: http://esp32.local");
-      MDNS.addService("http", "tcp", 80);
-    }
-  } else {
-    digitalWrite(STATUS_LED_PIN, LOW);
-    Serial.println("\n[WiFi] Connection timeout. Running local climate automation.");
-  }
-}
-
-void handleWifiWatchdog() {
-  unsigned long now = millis();
-  if (now - lastWifiCheckMs >= WIFI_RECONNECT_INTERVAL) {
-    lastWifiCheckMs = now;
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("[WiFi] Reconnecting...");
-      WiFi.reconnect();
-    }
-  }
-}
-
-// ==========================================
-// 13. SETUP & INITIALIZATION
+// 14. SETUP
 // ==========================================
 void setup() {
   Serial.begin(115200);
-  delay(100);
-  Serial.println("\n==============================================");
-  Serial.println("  Florify IoT - ESP32 Climate Controller      ");
-  Serial.println("  Direct Firebase REST + Dual Relay Actuators ");
-  Serial.println("==============================================");
+  delay(300);
 
-  // SAFE DE-ENERGIZED STARTUP: Write HIGH before setting pinMode to prevent boot flicker
-  digitalWrite(RELAY_FAN_PIN, RELAY_OFF);
-  digitalWrite(RELAY_MIST_PIN, RELAY_OFF);
+  // 1. Initialize Relay Pins in Push-Pull OUTPUT Mode (Active-HIGH)
   pinMode(RELAY_FAN_PIN, OUTPUT);
-  pinMode(RELAY_MIST_PIN, OUTPUT);
+  pinMode(RELAY_HUM_PIN, OUTPUT);
 
+  // Keep both relays safely OFF at startup (LOW for Active-HIGH)
+  setRelay(RELAY_FAN_PIN, false);
+  setRelay(RELAY_HUM_PIN, false);
+
+  // Status LED
   pinMode(STATUS_LED_PIN, OUTPUT);
   digitalWrite(STATUS_LED_PIN, LOW);
 
-  isFanActive = false;
-  isMistActive = false;
-  Serial.println("[INIT] Relays safely initialized to OFF (Active LOW).");
+  // 2. Initialize JMD0.96D-1 OLED Display (I2C on GPIO 21 SDA, GPIO 22 SCL)
+  Wire.begin(OLED_SDA, OLED_SCL);
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("[OLED] Address 0x3C not responding. Trying 0x3D..."));
+    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
+      Serial.println(F("[OLED] Warning: JMD0.96D-1 display failed to initialize."));
+      oledReady = false;
+    } else {
+      Serial.println(F("[OLED] JMD0.96D-1 initialized at 0x3D."));
+      oledReady = true;
+    }
+  } else {
+    Serial.println(F("[OLED] JMD0.96D-1 initialized at 0x3C."));
+    oledReady = true;
+  }
 
-  // Initialize DHT11 sensor
+  if (oledReady) {
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 15);
+    display.println(F("FLORIFY CLIMATE IOT"));
+    display.setCursor(0, 32);
+    display.println(F("Connecting WiFi..."));
+    display.display();
+  }
+
+  // 3. Start DHT11 Sensor
   dht.begin();
-  Serial.println("[INIT] DHT11 sensor initialized on GPIO 4.");
-  readDhtSensor(true);
+  Serial.println(F("[DHT11] Initialized on GPIO 4."));
 
-  // Connect to Wi-Fi & configure NTP
+  // 4. Connect to WiFi
   connectWiFi();
 
-  // Register Local Web Server endpoints with CORS
-  server.on("/status", HTTP_GET, handleGetStatus);
-  server.on("/status", HTTP_OPTIONS, handleOptionsPreflight);
+  // Initial sensor read
+  float t = dht.readTemperature();
+  float h = dht.readHumidity();
+  if (!isnan(t) && !isnan(h) && t >= -20.0 && t <= 80.0 && h >= 0.0 && h <= 100.0) {
+    lastTempC = t;
+    lastHumRH = h;
+    isSensorHealthy = true;
+  }
 
-  server.on("/fan", HTTP_GET, handleFanRequest);
-  server.on("/fan", HTTP_OPTIONS, handleOptionsPreflight);
+  renderOledDisplay();
 
-  server.on("/hum", HTTP_GET, handleHumRequest);
-  server.on("/hum", HTTP_OPTIONS, handleOptionsPreflight);
-
-  server.begin();
-  Serial.println("[SERVER] Local HTTP endpoints registered: /status, /fan, /hum");
-  printHelp();
-  Serial.println("[READY] System initialized and running.\n");
+  Serial.println();
+  Serial.println(F("ESP32 Climate Controller Ready!"));
+  Serial.println(F("Relay Logic: Active-HIGH (setRelay LOW = OFF, HIGH = ON)"));
+  Serial.println(F("Type HELP in Serial Monitor for available commands."));
 }
 
 // ==========================================
-// 14. MAIN EXECUTION LOOP
+// 15. MAIN SUPER-LOOP
 // ==========================================
 void loop() {
-  unsigned long now = millis();
+  unsigned long currentMillis = millis();
 
-  // 1. Process local Web Server requests
-  server.handleClient();
+  // 1. Process Humidifier Non-Blocking Click Timing
+  updateHumidifierStateMachine();
 
-  // 2. Process Serial Monitor commands
+  // 2. Process Interactive Serial Monitor Commands
   handleSerialCommands();
 
-  // 3. Periodic sensor sample, actuator regulation & direct Firestore REST telemetry push
-  if (now - lastTelemetryMillis >= TELEMETRY_INTERVAL_MS) {
-    lastTelemetryMillis = now;
+  // 3. Periodic DHT11 Sensor Sampling (Every 2.5 seconds)
+  if (currentMillis - lastSensorReadMillis >= SENSOR_INTERVAL_MS) {
+    lastSensorReadMillis = currentMillis;
 
-    readDhtSensor();
+    float t = dht.readTemperature();
+    float h = dht.readHumidity();
 
-    if (sensorHealthy) {
-      // Evaluate local autonomous hysteresis
-      evaluateActuators(latestTemperatureC, latestHumidityRH);
+    if (!isnan(t) && !isnan(h) && t >= -20.0 && t <= 80.0 && h >= 0.0 && h <= 100.0) {
+      lastTempC = t;
+      lastHumRH = h;
+      isSensorHealthy = true;
+    } else {
+      isSensorHealthy = false;
+      Serial.println(F("[DHT11] Warning: Reading failed on GPIO 4."));
+    }
 
-      // Transmit directly to Firebase Firestore
-      sendTelemetryToFirestore(latestTemperatureC, latestHumidityRH);
+    // Evaluate closed-loop actuation logic
+    evaluateActuators(lastTempC, lastHumRH);
+
+    // Refresh JMD0.96D-1 OLED Screen
+    renderOledDisplay();
+  }
+
+  // 4. Periodic Firebase Firestore Telemetry Push (Every 6 seconds)
+  if (currentMillis - lastTelemetryMillis >= TELEMETRY_INTERVAL_MS) {
+    lastTelemetryMillis = currentMillis;
+    if (isSensorHealthy && !isnan(lastTempC) && !isnan(lastHumRH)) {
+      sendTelemetryToFirestore(lastTempC, lastHumRH);
     }
   }
 
-  // 4. Periodic cloud configuration polling
-  if (now - lastConfigPollMillis >= CONFIG_POLL_INTERVAL_MS) {
-    lastConfigPollMillis = now;
+  // 5. Periodic Remote Config Polling from Firestore (Every 15 seconds)
+  if (currentMillis - lastConfigPollMillis >= CONFIG_POLL_INTERVAL_MS) {
+    lastConfigPollMillis = currentMillis;
     pollRemoteConfig();
   }
 
-  // 5. Wi-Fi watchdog
-  handleWifiWatchdog();
+  // Brief yield to FreeRTOS watchdog & network stack
+  delay(10);
 }

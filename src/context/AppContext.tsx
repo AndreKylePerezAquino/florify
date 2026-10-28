@@ -82,7 +82,11 @@ interface AppContextType {
   acknowledgeAlert: (alertId: string) => Promise<void>;
   updateDriverLocation: (coords: { latitude: number; longitude: number; accuracy?: number }) => Promise<void>;
   setDriverGpsOffline: () => Promise<void>;
-  updateEsp32Control: (fan: 'ON' | 'OFF' | 'UNCHANGED', hum: 'ON' | 'OFF' | 'UNCHANGED') => Promise<void>;
+  updateEsp32Control: (
+    fan: 'ON' | 'OFF' | 'AUTO' | 'UNCHANGED',
+    hum: 'ON' | 'OFF' | 'AUTO' | 'UNCHANGED',
+    targetDeviceId?: string
+  ) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -293,7 +297,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       devicesQuery,
       (snapshot) => {
         const devList: Device[] = [];
-        snapshot.forEach((d) => devList.push(d.data() as Device));
+        snapshot.forEach((d) => {
+          const data = d.data() as any;
+          const resolvedId = data.deviceId || d.id;
+          devList.push({
+            ...data,
+            id: d.id,
+            deviceId: resolvedId,
+          } as Device);
+        });
         setDevices(devList);
       },
       (error) => {
@@ -730,10 +742,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     try {
       await setDoc(configRef, cleanFirestoreData(updated));
-      await updateDoc(doc(db, 'devices', deviceId), {
-        desiredConfigVersion: newVersion,
-        updatedAt: new Date().toISOString(),
-      });
+      await setDoc(
+        doc(db, 'devices', deviceId),
+        {
+          deviceId,
+          desiredConfigVersion: newVersion,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
       await logAuditEvent('CONFIG_UPDATED', 'CONFIG', deviceId, `Updated configuration to v${newVersion}`);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `devices/${deviceId}/config/current`);
@@ -852,17 +869,51 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const updateEsp32Control = async (fan: 'ON' | 'OFF' | 'UNCHANGED', hum: 'ON' | 'OFF' | 'UNCHANGED') => {
-    const esp32Host = 'esp32.local'; // ESP32 mDNS hostname
-    try {
-      if (fan !== 'UNCHANGED') {
-        await fetch(`http://${esp32Host}/fan?state=${fan.toLowerCase()}`);
-      }
-      if (hum !== 'UNCHANGED') {
-        await fetch(`http://${esp32Host}/hum?state=${hum.toLowerCase()}`);
-      }
-    } catch (err) {
-      console.error('Error controlling ESP32:', err);
+  const updateEsp32Control = async (
+    fan: 'ON' | 'OFF' | 'AUTO' | 'UNCHANGED',
+    hum: 'ON' | 'OFF' | 'AUTO' | 'UNCHANGED',
+    targetDeviceId?: string
+  ) => {
+    // Determine target device ID: use explicit ID, first registered device, or fallback to ESP32-FLORIFY-01
+    const deviceId =
+      targetDeviceId ||
+      (devices.length > 0 ? (devices[0].deviceId || (devices[0] as any).id) : 'ESP32-FLORIFY-01');
+
+    if (!deviceId) return;
+
+    const updates: Partial<DeviceConfig> = {};
+    if (fan === 'ON') {
+      updates.fanMode = 'FORCE_ON';
+      updates.overrideExpiresAt = new Date(Date.now() + 60 * 60000).toISOString();
+      updates.overrideReason = 'Manual control from Admin Settings';
+    } else if (fan === 'OFF') {
+      updates.fanMode = 'FORCE_OFF';
+      updates.overrideExpiresAt = new Date(Date.now() + 60 * 60000).toISOString();
+      updates.overrideReason = 'Manual control from Admin Settings';
+    } else if (fan === 'AUTO') {
+      updates.fanMode = 'AUTO';
+    }
+
+    if (hum === 'ON') {
+      updates.mistMode = 'FORCE_ON';
+      updates.mistOverrideExpiresAt = new Date(Date.now() + 60 * 60000).toISOString();
+      updates.mistOverrideReason = 'Manual control from Admin Settings';
+    } else if (hum === 'OFF') {
+      updates.mistMode = 'FORCE_OFF';
+      updates.mistOverrideExpiresAt = new Date(Date.now() + 60 * 60000).toISOString();
+      updates.mistOverrideReason = 'Manual control from Admin Settings';
+    } else if (hum === 'AUTO') {
+      updates.mistMode = 'AUTO';
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await updateConfig(deviceId, updates);
+      await logAuditEvent(
+        'ESP32_MANUAL_COMMAND',
+        'DEVICE',
+        deviceId,
+        `Manual command sent to ${deviceId}: Fan=${fan}, Mist=${hum}`
+      );
     }
   };
 
