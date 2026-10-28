@@ -137,16 +137,39 @@ const portIndex = args.indexOf('--port');
 const cliPort = portIndex !== -1 && args[portIndex + 1] ? parseInt(args[portIndex + 1], 10) : undefined;
 const port = cliPort || 3000;
 
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
 app.use(express.json({ limit: '1mb' }));
 
 // In-memory backend state for devices, secrets, configs, audit logs (synchronized with Firestore in prod)
 const deviceSecrets: Record<string, string> = {
+  'ESP32-FLORIFY-01': 'esp32_sec_alpha998_secret',
   'ESP32-CLIMATE-01': 'esp32_sec_alpha998_secret',
   'ESP32-CLIMATE-02': 'esp32_sec_beta442_secret',
   'ESP32-CLIMATE-03': 'esp32_sec_gamma110_secret',
 };
 
 const serverDeviceConfigs: Record<string, any> = {
+  'ESP32-FLORIFY-01': {
+    temperatureEnabled: true,
+    temperatureOnC: 40.0,
+    temperatureOffC: 38.0,
+    humidityEnabled: false,
+    humidityOnRH: 40.0,
+    humidityOffRH: 55.0,
+    activationMode: 'ANY',
+    fanMode: 'AUTO',
+    mistMode: 'FORCE_OFF',
+    version: 1,
+  },
   'ESP32-CLIMATE-01': {
     temperatureEnabled: true,
     temperatureOnC: 40.0,
@@ -217,26 +240,26 @@ app.post('/api/device/heartbeat', verifyDeviceAuth, async (req: Request, res: Re
 
   if (firestoreDb) {
     try {
+      const nowIso = new Date().toISOString();
       const devRef = doc(firestoreDb, 'devices', deviceId);
-      await updateDoc(devRef, {
-        lastSeenAt: new Date().toISOString(),
-        status: 'ACTIVE',
-        ...(typeof freeHeap === 'number' ? { freeHeap } : {}),
-        ...(typeof wifiRssi === 'number' ? { wifiRssi } : {}),
-        ...(firmwareVersion ? { firmwareVersion } : {}),
-      }).catch(async (err: any) => {
-        if (err.code === 'not-found') {
-          await setDoc(devRef, {
-            deviceId,
-            displayName: `ESP32 (${deviceId})`,
-            status: 'ACTIVE',
-            lastSeenAt: new Date().toISOString(),
-            createdAt: new Date().toISOString(),
-          }).catch(() => {});
-        }
-      });
+      await setDoc(
+        devRef,
+        {
+          deviceId,
+          displayName: `ESP32 (${deviceId})`,
+          sensorType: 'DHT11',
+          active: true,
+          status: 'ACTIVE',
+          lastSeenAt: nowIso,
+          updatedAt: nowIso,
+          ...(typeof freeHeap === 'number' ? { freeHeap } : {}),
+          ...(typeof wifiRssi === 'number' ? { wifiRssi } : {}),
+          ...(firmwareVersion ? { firmwareVersion } : {}),
+        },
+        { merge: true }
+      );
     } catch (dbErr) {
-      console.warn('[Server] Notice updating heartbeat in Firestore:', dbErr);
+      console.error('[Server] Error updating heartbeat in Firestore:', dbErr);
     }
   }
 
@@ -279,32 +302,30 @@ app.post('/api/device/readings', verifyDeviceAuth, async (req: Request, res: Res
       const latestSample = readings[readings.length - 1];
       const devRef = doc(firestoreDb, 'devices', deviceId);
 
-      await updateDoc(devRef, {
-        latestTemperatureC: latestSample.temperatureC,
-        latestHumidityRH: latestSample.humidityRH,
-        latestFanState: latestSample.fanState || 'OFF',
-        latestMistState: latestSample.mistState || 'OFF',
-        lastReadingAt: latestSample.timestamp || nowIso,
-        lastSeenAt: nowIso,
-        status: 'ACTIVE',
-        reportedMode: latestSample.operatingMode || 'AUTO',
-      }).catch(async (err: any) => {
-        if (err.code === 'not-found') {
-          await setDoc(devRef, {
-            deviceId,
-            displayName: `ESP32 (${deviceId})`,
-            latestTemperatureC: latestSample.temperatureC,
-            latestHumidityRH: latestSample.humidityRH,
-            latestFanState: latestSample.fanState || 'OFF',
-            latestMistState: latestSample.mistState || 'OFF',
-            lastReadingAt: latestSample.timestamp || nowIso,
-            lastSeenAt: nowIso,
-            status: 'ACTIVE',
-            reportedMode: latestSample.operatingMode || 'AUTO',
-            createdAt: nowIso,
-          }).catch(() => {});
-        }
-      });
+      // setDoc with merge: true ensures document is created if not existing,
+      // and sensorType: 'DHT11' satisfies firestore.rules
+      await setDoc(
+        devRef,
+        {
+          deviceId,
+          displayName: `ESP32 (${deviceId})`,
+          sensorType: 'DHT11',
+          active: true,
+          status: 'ACTIVE',
+          latestTemperatureC: latestSample.temperatureC,
+          latestHumidityRH: latestSample.humidityRH,
+          latestFanState: latestSample.fanState || 'OFF',
+          latestMistState: latestSample.mistState || 'OFF',
+          reportedMode: latestSample.operatingMode || 'AUTO',
+          reportedConfigVersion: 1,
+          desiredConfigVersion: 1,
+          firmwareVersion: '2.3.0-climate',
+          lastReadingAt: latestSample.timestamp || nowIso,
+          lastSeenAt: nowIso,
+          updatedAt: nowIso,
+        },
+        { merge: true }
+      );
 
       const readingsCol = collection(firestoreDb, 'devices', deviceId, 'readings');
       for (const sample of readings) {
@@ -317,10 +338,11 @@ app.post('/api/device/readings', verifyDeviceAuth, async (req: Request, res: Res
           operatingMode: sample.operatingMode || 'AUTO',
           sensorHealthy: sample.sensorHealthy !== false,
           receivedAt: sample.timestamp || nowIso,
-        }).catch((err) => console.warn('[Server] Notice persisting subcollection reading:', err));
+        });
       }
+      console.log(`[Server] Persisted ${readings.length} readings for ${deviceId} to Firestore.`);
     } catch (dbErr) {
-      console.warn('[Server] Notice updating readings in Firestore:', dbErr);
+      console.error('[Server] Error updating readings in Firestore:', dbErr);
     }
   }
 

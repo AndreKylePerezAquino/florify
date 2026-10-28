@@ -486,17 +486,18 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
                 No vehicles match current filter.
               </span>
             ) : (
-              filteredDevices.map((device) => {
+              filteredDevices.map((device, index) => {
                 const isOnline = isDeviceConnected(device);
                 const isSelected = selectedDeviceId === device.deviceId;
                 const driver = device.assignedDriverUid ? userMap.get(device.assignedDriverUid) : undefined;
                 const gpsStatus = getDriverGpsStatus(driver);
                 const isLiveGps = gpsStatus.status === 'CONNECTED';
+                const safeKey = device.deviceId ? `${device.deviceId}-${index}` : `map-shuttle-btn-${index}`;
 
                 return (
                   <button
-                    key={device.deviceId}
-                    onClick={() => focusDeviceOnMap(device.deviceId)}
+                    key={safeKey}
+                    onClick={() => focusDeviceOnMap(device.deviceId || '')}
                     className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium border shrink-0 transition-all ${
                       isSelected
                         ? 'bg-[#C72C5E] text-white border-[#C72C5E] shadow-xs'

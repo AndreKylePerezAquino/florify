@@ -64,11 +64,13 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
   const approvedDrivers = allUsers.filter((u) => u.role === 'DRIVER' && u.status === 'APPROVED');
 
   const filteredDevices = devices.filter((d) => {
+    if (!d) return false;
     const matchesStatus = statusFilter === 'ALL' || d.status === statusFilter;
-    const matchesSearch =
-      d.deviceId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      d.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (d.locationLabel && d.locationLabel.toLowerCase().includes(searchQuery.toLowerCase()));
+    const q = (searchQuery || '').trim().toLowerCase();
+    const id = (d.deviceId || '').toLowerCase();
+    const name = (d.displayName || '').toLowerCase();
+    const loc = (d.locationLabel || '').toLowerCase();
+    const matchesSearch = id.includes(q) || name.includes(q) || loc.includes(q);
     return matchesStatus && matchesSearch;
   });
 
@@ -84,7 +86,7 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
       return;
     }
 
-    if (devices.some((d) => d.deviceId.toUpperCase() === newDeviceId.trim().toUpperCase())) {
+    if (devices.some((d) => (d?.deviceId || '').toUpperCase() === newDeviceId.trim().toUpperCase())) {
       setRegisterError('A device with this ID already exists.');
       return;
     }
@@ -185,21 +187,22 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
                   </td>
                 </tr>
               ) : (
-                filteredDevices.map((device) => {
+                filteredDevices.map((device, index) => {
                   const assignedDriver = allUsers.find((u) => u.uid === device.assignedDriverUid);
+                  const safeKey = device.deviceId ? `${device.deviceId}-${index}` : `device-row-${index}`;
 
                   return (
-                    <tr key={device.deviceId} className="hover:bg-[#FFF7F9]/30 transition-colors">
+                    <tr key={safeKey} className="hover:bg-[#FFF7F9]/30 transition-colors">
                       {/* Name & ID */}
                       <td className="py-3 px-4">
                         <button
-                          onClick={() => navigate(`/admin/devices/${device.deviceId}`)}
+                          onClick={() => navigate(`/admin/devices/${device.deviceId || ''}`)}
                           className="font-bold text-[#2E1826] hover:text-[#C72C5E] text-left block"
                         >
-                          {device.displayName}
+                          {device.displayName || device.deviceId || 'Unnamed Device'}
                         </button>
                         <div className="font-mono text-[11px] text-[#826674]">
-                          {device.deviceId}
+                          {device.deviceId || 'No ID'}
                           {device.locationLabel && ` · ${device.locationLabel}`}
                         </div>
                       </td>

@@ -196,11 +196,12 @@ export const AdminOverviewPage: React.FC<AdminOverviewPageProps> = ({ navigate }
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {devices.map((device) => {
+            {devices.map((device, index) => {
               const driver = allUsers.find((u) => u.uid === device.assignedDriverUid);
+              const safeKey = device.deviceId ? `${device.deviceId}-${index}` : `overview-dev-${index}`;
               return (
                 <DeviceCard
-                  key={device.deviceId}
+                  key={safeKey}
                   device={device}
                   driver={driver}
                   onSelect={(id) => navigate(`/admin/devices/${id}`)}
@@ -233,8 +234,8 @@ export const AdminOverviewPage: React.FC<AdminOverviewPageProps> = ({ navigate }
           <p className="text-xs text-slate-500 py-4 text-center">No alerts triggered. System operating normally.</p>
         ) : (
           <div className="divide-y divide-[#FDC3D1]">
-            {alerts.slice(0, 4).map((alert) => (
-              <div key={alert.id} className="py-3 flex items-start justify-between gap-3 text-xs">
+            {alerts.slice(0, 4).map((alert, index) => (
+              <div key={alert.id ? `${alert.id}-${index}` : `overview-alert-${index}`} className="py-3 flex items-start justify-between gap-3 text-xs">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span
