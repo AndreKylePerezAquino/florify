@@ -5,7 +5,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, doc, updateDoc, setDoc, collection, addDoc, Firestore } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, setDoc, deleteDoc, collection, addDoc, Firestore } from 'firebase/firestore';
 
 dotenv.config();
 
@@ -424,12 +424,90 @@ app.post('/api/admin/users/:uid/suspend', (req: Request, res: Response) => {
   res.status(200).json({ status: 'SUSPENDED', uid });
 });
 
-app.post('/api/admin/devices', (req: Request, res: Response) => {
+app.post('/api/admin/devices', async (req: Request, res: Response) => {
   const { deviceId, displayName, locationLabel, adminUid = 'admin' } = req.body;
   const newSecret = `esp32_sec_${Math.random().toString(36).substring(2, 12)}`;
   deviceSecrets[deviceId] = newSecret;
+
+  if (firestoreDb && deviceId) {
+    try {
+      const nowIso = new Date().toISOString();
+      const devRef = doc(firestoreDb, 'devices', deviceId);
+      await setDoc(
+        devRef,
+        {
+          deviceId,
+          displayName: displayName || `ESP32 (${deviceId})`,
+          sensorType: 'DHT11',
+          locationLabel: locationLabel || '',
+          active: true,
+          status: 'ACTIVE',
+          latestTemperatureC: 0,
+          latestHumidityRH: 0,
+          latestFanState: 'OFF',
+          latestMistState: 'OFF',
+          reportedMode: 'AUTO',
+          reportedConfigVersion: 1,
+          desiredConfigVersion: 1,
+          firmwareVersion: '2.3.0-climate',
+          lastReadingAt: nowIso,
+          lastSeenAt: nowIso,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        },
+        { merge: true }
+      );
+
+      const configRef = doc(firestoreDb, 'devices', deviceId, 'config', 'current');
+      await setDoc(
+        configRef,
+        {
+          temperatureEnabled: true,
+          temperatureOnC: 40.0,
+          temperatureOffC: 38.0,
+          humidityEnabled: true,
+          humidityOnRH: 75.0,
+          humidityOffRH: 65.0,
+          activationMode: 'ANY',
+          fanMode: 'AUTO',
+          version: 1,
+          updatedAt: nowIso,
+        },
+        { merge: true }
+      );
+    } catch (dbErr) {
+      console.error('[Server] Error persisting registered device to Firestore:', dbErr);
+    }
+  }
+
   logAdminAudit(adminUid, 'DEVICE_REGISTERED', 'DEVICE', deviceId, `Registered new ESP32: ${displayName}`);
   res.status(201).json({ status: 'REGISTERED', deviceId, initialSecret: newSecret });
+});
+
+app.delete('/api/admin/devices/:deviceId', async (req: Request, res: Response) => {
+  const { deviceId } = req.params;
+  const { adminUid = 'admin' } = req.body || {};
+  delete deviceSecrets[deviceId];
+  delete serverDeviceConfigs[deviceId];
+
+  if (firestoreDb && deviceId) {
+    try {
+      const devRef = doc(firestoreDb, 'devices', deviceId);
+      await deleteDoc(devRef);
+      try {
+        const configRef = doc(firestoreDb, 'devices', deviceId, 'config', 'current');
+        await deleteDoc(configRef);
+      } catch (err) {
+        // ignore subcollection delete failure if not found
+      }
+      console.log(`[Server] Deleted device ${deviceId} from Firestore.`);
+    } catch (dbErr) {
+      console.error('[Server] Error deleting device from Firestore:', dbErr);
+    }
+  }
+
+  logAdminAudit(adminUid, 'DEVICE_DELETED', 'DEVICE', deviceId, `Deleted device: ${deviceId}`);
+  res.status(200).json({ status: 'DELETED', deviceId });
 });
 
 app.post('/api/admin/devices/:deviceId/assign', (req: Request, res: Response) => {

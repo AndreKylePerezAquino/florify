@@ -53,6 +53,7 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
   const [newLocationLabel, setNewLocationLabel] = useState('');
   const [newDriverUid, setNewDriverUid] = useState<string>('');
   const [registerError, setRegisterError] = useState<string | null>(null);
+  const [isRegistering, setIsRegistering] = useState(false);
 
   const approvedDrivers = allUsers.filter((u) => u.role === 'DRIVER' && u.status === 'APPROVED');
 
@@ -68,12 +69,14 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
       return;
     }
 
-    if (devices.some((d) => d.deviceId.toUpperCase() === newDeviceId.trim().toUpperCase())) {
+    if (devices.some((d) => (d?.deviceId || '').toUpperCase() === newDeviceId.trim().toUpperCase())) {
       setRegisterError('A device with this ID already exists.');
       return;
     }
 
     try {
+      setIsRegistering(true);
+      setRegisterError(null);
       await registerDevice(
         newDeviceId,
         newDisplayName,
@@ -81,6 +84,8 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
         newDriverUid || null
       );
       setIsRegisterModalOpen(false);
+      setSuccessMessage(`Climate monitor ${newDeviceId.trim().toUpperCase()} registered successfully!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
       setNewDeviceId('');
       setNewDisplayName('');
       setNewLocationLabel('');
@@ -88,6 +93,8 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
       setRegisterError(null);
     } catch (err: any) {
       setRegisterError(err?.message || 'Failed to register device.');
+    } finally {
+      setIsRegistering(false);
     }
   };
 
@@ -613,9 +620,17 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#FF5C89] hover:bg-[#C72C5E] text-white text-xs font-semibold rounded-xl shadow-xs cursor-pointer"
+                  disabled={isRegistering}
+                  className="px-5 py-2 bg-[#FF5C89] hover:bg-[#C72C5E] text-white text-xs font-semibold rounded-xl shadow-xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
                 >
-                  Register Monitor
+                  {isRegistering ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      Registering...
+                    </>
+                  ) : (
+                    'Register Monitor'
+                  )}
                 </button>
               </div>
             </form>

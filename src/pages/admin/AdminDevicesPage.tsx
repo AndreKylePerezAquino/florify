@@ -39,6 +39,8 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
   const [statusFilter, setStatusFilter] = useState<'ALL' | DeviceStatus>('ALL');
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // 5-second timer to keep real-time GPS freshness updated
   const [, setTick] = useState(0);
@@ -121,8 +123,17 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
   };
 
   const handleDeleteDevice = async (deviceId: string) => {
-    await removeDevice(deviceId);
-    setDeletingDeviceId(null);
+    try {
+      setIsDeleting(true);
+      setDeleteError(null);
+      await removeDevice(deviceId);
+      setDeletingDeviceId(null);
+    } catch (err: any) {
+      console.error('Failed to remove device:', err);
+      setDeleteError(err?.message || 'Failed to remove device.');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -367,18 +378,32 @@ export const AdminDevicesPage: React.FC<AdminDevicesPageProps> = ({ navigate }) 
             <p className="text-xs text-[#826674]">
               This will permanently delete climate monitor <strong>{deletingDeviceId}</strong> and all associated historical data and telemetry records. This action cannot be undone.
             </p>
+
+            {deleteError && (
+              <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">
+                {deleteError}
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 pt-2">
               <button
-                onClick={() => setDeletingDeviceId(null)}
-                className="px-3 py-1.5 text-xs font-semibold text-[#826674]"
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  setDeletingDeviceId(null);
+                  setDeleteError(null);
+                }}
+                className="px-3 py-1.5 text-xs font-semibold text-[#826674] cursor-pointer disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
+                type="button"
+                disabled={isDeleting}
                 onClick={() => handleDeleteDevice(deletingDeviceId)}
-                className="px-4 py-1.5 text-xs font-semibold bg-rose-600 text-white rounded-lg hover:bg-rose-700"
+                className="px-4 py-1.5 text-xs font-semibold bg-rose-600 text-white rounded-lg hover:bg-rose-700 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
               >
-                Confirm Removal
+                {isDeleting ? 'Removing...' : 'Confirm Removal'}
               </button>
             </div>
           </div>

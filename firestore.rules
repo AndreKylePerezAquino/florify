@@ -118,15 +118,13 @@ service cloud.firestore {
         (isSignedIn() && resource.data.assignedDriverUid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['locationLabel', 'updatedAt'])) ||
         request.resource.data.sensorType == 'DHT11'
       );
-      allow delete: if isAdmin();
+      allow delete: if isValidId(deviceId) && (isAdmin() || isSignedIn());
 
       // Device configuration subcollection
       match /config/{configDoc} {
         // Allows ESP32 to poll remote config parameters via REST GET
         allow get: if isValidId(deviceId);
-        allow list: if isAdmin() && isValidId(deviceId);
-        allow create, update: if isAdmin() && isValidId(deviceId);
-        allow delete: if isAdmin();
+        allow list, create, update, delete: if isValidId(deviceId) && (isAdmin() || isSignedIn());
       }
 
       // Device readings subcollection

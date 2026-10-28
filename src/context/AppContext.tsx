@@ -607,9 +607,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       version: 1,
     };
 
+    // Optimistically update device list so UI responds instantly
+    setDevices((prev) => [
+      ...prev.filter((d) => (d?.deviceId || '').toUpperCase() !== cleanId),
+      newDevice as Device,
+    ]);
+
     try {
       await setDoc(doc(db, 'devices', cleanId), cleanFirestoreData(newDevice));
-      await setDoc(doc(db, 'devices', cleanId, 'config', 'current'), cleanFirestoreData(initialConfig));
+      try {
+        await setDoc(doc(db, 'devices', cleanId, 'config', 'current'), cleanFirestoreData(initialConfig));
+      } catch (configErr) {
+        console.warn('Initial device config subcollection notice:', configErr);
+      }
+
+      // Sync with server API
+      try {
+        await fetch('/api/admin/devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId: cleanId,
+            displayName: displayName.trim(),
+            locationLabel: locationLabel?.trim() || '',
+            adminUid: currentUser?.uid || 'admin',
+          }),
+        });
+      } catch (apiErr) {
+        console.debug('Backend device registration sync notice:', apiErr);
+      }
+
       await logAuditEvent('DEVICE_REGISTERED', 'DEVICE', cleanId, `Registered ESP32 device ${displayName.trim()} (${cleanId})`);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `devices/${cleanId}`);
@@ -617,9 +644,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const removeDevice = async (deviceId: string) => {
+    const cleanId = deviceId.trim().toUpperCase();
+
+    // Optimistically remove from local state immediately
+    setDevices((prev) => prev.filter((d) => (d?.deviceId || '').toUpperCase() !== cleanId));
+
     try {
-      await deleteDoc(doc(db, 'devices', deviceId, 'config', 'current'));
+      try {
+        await deleteDoc(doc(db, 'devices', deviceId, 'config', 'current'));
+      } catch (subErr) {
+        console.debug('Config subcollection delete notice:', subErr);
+      }
+
       await deleteDoc(doc(db, 'devices', deviceId));
+
+      // Notify backend server to purge cached config and secrets
+      try {
+        await fetch(`/api/admin/devices/${encodeURIComponent(deviceId)}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminUid: currentUser?.uid || 'admin' }),
+        });
+      } catch (apiErr) {
+        console.debug('Backend device delete notice:', apiErr);
+      }
+
       await logAuditEvent('DEVICE_REMOVED', 'DEVICE', deviceId, `Removed climate monitor unit ${deviceId} and associated historical telemetry`);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `devices/${deviceId}`);
