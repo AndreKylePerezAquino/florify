@@ -6,12 +6,7 @@ import {
   Navigation,
   Thermometer,
   Droplets,
-  Radio,
   MapPin,
-  AlertTriangle,
-  RefreshCw,
-  Wifi,
-  WifiOff,
 } from 'lucide-react';
 import { Device } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -334,44 +329,6 @@ export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) =>
 
   return (
     <div className="space-y-3">
-      {/* Amber Alert Banner: Web is Connected but GPS is Off / Signal Lost */}
-      {isWebOnline && locationSource !== 'GPS' && (
-        <div className="bg-amber-50/95 border border-amber-300 rounded-2xl p-4 text-amber-950 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-amber-100 text-amber-700 shrink-0 mt-0.5 sm:mt-0">
-              <AlertTriangle className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-bold text-xs sm:text-sm text-amber-950">
-                  Web Connected • GPS Signal Off
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                  Web Online
-                </span>
-              </div>
-              <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                {gpsError ? `${gpsError}. ` : ''}
-                Shuttle live location tracking is paused because device location is turned off or blocked. Auto-rechecking every 10s (next retry in {countdown}s).
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setCountdown(10);
-              acquireGpsPosition(true);
-            }}
-            disabled={isRetryingGps}
-            className="self-end sm:self-auto inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors shrink-0 disabled:opacity-60 cursor-pointer"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRetryingGps ? 'animate-spin' : ''}`} />
-            <span>{isRetryingGps ? 'Checking GPS...' : 'Recheck GPS Now'}</span>
-          </button>
-        </div>
-      )}
-
       {/* Main Map Card */}
       <div className="bg-white rounded-2xl border border-[#FDC3D1] shadow-xs overflow-hidden">
         {/* Map Header Status Bar */}
@@ -380,10 +337,8 @@ export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) =>
             <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-xl border border-[#FDC3D1] shadow-2xs">
               <span
                 className={`flex h-2.5 w-2.5 rounded-full ${
-                  locationSource === 'GPS'
+                  isWebOnline
                     ? 'bg-emerald-500 animate-pulse'
-                    : isWebOnline
-                    ? 'bg-amber-500 animate-ping'
                     : 'bg-slate-400'
                 }`}
               />
@@ -392,51 +347,17 @@ export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) =>
                   {device?.displayName || 'Assigned Shuttle'}
                 </span>
                 <span className="text-[10px] text-[#826674] block font-mono">
-                  {locationSource === 'GPS' ? (
-                    <span className="text-emerald-700 font-semibold">
-                      {coords[0].toFixed(4)}°, {coords[1].toFixed(4)}° • Live GPS
-                    </span>
-                  ) : isWebOnline ? (
-                    <span className="text-amber-700 font-medium">
-                      Station Coords • GPS Off (Retry in {countdown}s)
-                    </span>
-                  ) : (
-                    <span>Station Coords • Offline</span>
-                  )}
+                  {coords[0].toFixed(4)}°, {coords[1].toFixed(4)}°
                 </span>
               </div>
             </div>
 
-            {/* Location & Web status badge */}
+            {/* Connection status badge */}
             <div className="hidden xs:flex items-center gap-1.5 text-xs bg-white px-2.5 py-1 rounded-lg border border-[#FCE7ED] font-medium">
-              {locationSource === 'GPS' ? (
-                <>
-                  <Radio className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-                  <span className="text-emerald-700 font-semibold text-[11px]">
-                    Live GPS Synced {accuracyMeters ? `(±${accuracyMeters}m)` : ''} • Web Online
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="flex h-2 w-2 rounded-full bg-emerald-500" title="Web Connected" />
-                  <span className="text-amber-800 font-semibold text-[11px]">
-                    {isWebOnline ? 'Web Online • GPS Off' : 'Web Offline'}
-                  </span>
-                  {isWebOnline && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCountdown(10);
-                        acquireGpsPosition(true);
-                      }}
-                      disabled={isRetryingGps}
-                      className="ml-1 text-[10px] text-[#C72C5E] hover:underline font-semibold cursor-pointer"
-                    >
-                      {isRetryingGps ? 'Checking...' : 'Recheck'}
-                    </button>
-                  )}
-                </>
-              )}
+              <span className={`flex h-2 w-2 rounded-full ${isWebOnline ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+              <span className="text-[#826674] font-semibold text-[11px]">
+                {isWebOnline ? 'Connected' : 'Offline'}
+              </span>
             </div>
           </div>
 
@@ -491,11 +412,7 @@ export const LeafletDeviceMap: React.FC<LeafletDeviceMapProps> = ({ device }) =>
             <span>Drag to pan • Pinch or scroll to zoom</span>
           </span>
           <span className="font-mono text-[10px]">
-            {locationSource === 'GPS'
-              ? 'Live device GPS active'
-              : isWebOnline
-              ? 'Station fallback (Web online)'
-              : 'Offline'}
+            {isWebOnline ? 'Live Tracking Active' : 'Offline'}
           </span>
         </div>
       </div>

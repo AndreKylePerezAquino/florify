@@ -67,7 +67,7 @@ function getVehicleCoordinates(
     return {
       coords: [driver.currentLocation.latitude, driver.currentLocation.longitude],
       isLiveGps: true,
-      locationLabel: `Live GPS: ${driver.displayName || 'Driver'}`,
+      locationLabel: driver.displayName || 'Driver',
     };
   }
 
@@ -266,34 +266,23 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
         ? 'rgba(225, 29, 72, 0.25)'
         : 'rgba(5, 150, 105, 0.22)';
 
-      // Custom marker icon with integrated driver badge and live GPS indicator
+      // Custom marker icon with integrated driver badge
       const customIcon = L.divIcon({
         className: 'admin-leaflet-marker',
         html: `
           <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%); cursor: pointer;">
             <!-- Shuttle & Driver Integrated Top Pill -->
             <div style="background: #2E1826; color: #FFFFFF; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; box-shadow: 0 2px 5px rgba(0,0,0,0.25); white-space: nowrap; margin-bottom: 2px; border: 1px solid ${pinColor}; display: flex; align-items: center; gap: 4.5px;">
-              ${
-                isLiveGps
-                  ? `<span style="display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: #10B981; box-shadow: 0 0 6px #10B981;"></span>`
-                  : `<span style="display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: #94A3B8;"></span>`
-              }
+              <span style="display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: ${isOnline ? '#10B981' : '#94A3B8'}; ${isOnline ? 'box-shadow: 0 0 6px #10B981;' : ''}"></span>
               <span>${device.displayName || device.deviceId}</span>
               <span style="opacity: 0.35;">•</span>
-              <span style="color: ${isLiveGps ? '#6EE7B7' : '#CBD5E1'}; font-weight: 600;">${driverDisplayName}</span>
-              ${
-                !isLiveGps && driver
-                  ? `<span style="color: #FDA4AF; font-size: 8.5px; font-weight: 600; text-transform: uppercase;">(GPS OFF)</span>`
-                  : ''
-              }
+              <span style="color: #FFFFFF; font-weight: 600;">${driverDisplayName}</span>
             </div>
 
-            <!-- Pin Body with Integrated Driver Badge & Live GPS Pulse -->
+            <!-- Pin Body with Integrated Driver Badge -->
             <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
               ${
-                isLiveGps
-                  ? `<div style="position: absolute; width: 36px; height: 36px; border-radius: 9999px; background: rgba(16, 185, 129, 0.32); animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
-                  : isOnline
+                isOnline
                   ? `<div style="position: absolute; width: 32px; height: 32px; border-radius: 9999px; background: ${pulseBg}; animation: ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
                   : ''
               }
@@ -306,7 +295,7 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
               </div>
 
               <!-- Overlapping Integrated Driver Badge -->
-              <div style="position: absolute; bottom: -2px; right: -2px; width: 16px; height: 16px; border-radius: 9999px; background: ${isLiveGps ? '#059669' : '#64748B'}; border: 1.5px solid #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 800; color: #FFFFFF;" title="${driverDisplayName}${isLiveGps ? ' (Live GPS)' : ' (GPS Offline)'}">
+              <div style="position: absolute; bottom: -2px; right: -2px; width: 16px; height: 16px; border-radius: 9999px; background: ${isOnline ? '#059669' : '#64748B'}; border: 1.5px solid #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 800; color: #FFFFFF;" title="${driverDisplayName}">
                 ${driverInitial}
               </div>
             </div>
@@ -387,7 +376,7 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm sm:text-base font-bold text-[#2E1826]">
-                Fleet GPS & Climate Map
+                Fleet & Climate Map
               </h2>
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100/80 text-emerald-800 border border-emerald-300/60">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
@@ -490,8 +479,6 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
                 const isOnline = isDeviceConnected(device);
                 const isSelected = selectedDeviceId === device.deviceId;
                 const driver = device.assignedDriverUid ? userMap.get(device.assignedDriverUid) : undefined;
-                const gpsStatus = getDriverGpsStatus(driver);
-                const isLiveGps = gpsStatus.status === 'CONNECTED';
                 const safeKey = device.deviceId ? `${device.deviceId}-${index}` : `map-shuttle-btn-${index}`;
 
                 return (
@@ -506,19 +493,13 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
                   >
                     <span
                       className={`w-2 h-2 rounded-full ${
-                        isLiveGps
-                          ? 'bg-emerald-500 ring-2 ring-emerald-300 animate-pulse'
-                          : isOnline
+                        isOnline
                           ? 'bg-emerald-500 ring-2 ring-emerald-200'
                           : 'bg-slate-400'
                       }`}
                       title={
-                        isLiveGps
-                          ? `Live GPS Connected (${gpsStatus.elapsedSeconds}s ago)`
-                          : driver
-                          ? gpsStatus.label
-                          : isOnline
-                          ? 'Vehicle Online (No Driver)'
+                        isOnline
+                          ? (driver ? `Vehicle Online • ${driver.displayName || 'Driver'}` : 'Vehicle Online (No Driver)')
                           : 'Vehicle Offline'
                       }
                     />
@@ -529,20 +510,12 @@ export const AdminFleetMap: React.FC<AdminFleetMapProps> = ({
                       className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold ${
                         isSelected
                           ? 'bg-white/20 text-white'
-                          : isLiveGps
+                          : isOnline
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : driver
-                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
                           : 'bg-[#FFF7F9] text-[#826674] border border-[#FDC3D1]/50'
                       }`}
-                      title={gpsStatus.label}
                     >
                       {driver?.displayName || 'Unassigned'}
-                      {driver && (
-                        <span className="ml-1 opacity-80 font-medium text-[9px]">
-                          {isLiveGps ? '• Live' : '• Offline'}
-                        </span>
-                      )}
                     </span>
                   </button>
                 );

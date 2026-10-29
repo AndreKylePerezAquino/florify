@@ -1,17 +1,24 @@
-# ESP32 + TB6612FNG Dual Driver + DHT11 + OLED Hardware Wiring Guide
+# ESP32 Hybrid Hardware Wiring Guide: TB6612FNG (DC Fan) + 2-Channel Relay (Dual Humidifiers)
 
-This guide details the complete hardware wiring, pin assignments, electrical protection, and operating logic for deploying the **ESP32 Climate Monitor & Florify Actuator System** using the **Toshiba TB6612FNG Dual H-Bridge Driver**.
+This guide details the complete hardware wiring, pin assignments, electrical protection, and operating logic for deploying the **ESP32 Florify Climate Monitor & Actuator System** using a hybrid architecture:
+1. **Toshiba TB6612FNG Dual H-Bridge Driver** for high-current, MOSFET-switched DC Cooling Fan drive.
+2. **2-Channel Optocoupled Relay Module** for 100% electrically isolated mechanical dry contact closure across the push-button contacts of both humidifiers.
 
 ---
 
-## 1. Safety & Electrical Specifications
+## 1. Safety & Power Architecture
 
 > **CRITICAL HARDWARE RULES:**
-> 1. **Common Ground is Mandatory**: Connect the ESP32 `GND`, TB6612FNG `GND` pins, external 5V Power Supply `GND (-)`, and Humidifier circuit ground together. Without a common ground reference, the control signals and pull-down pulses will not work.
-> 2. **Logic vs. Motor Power Separation**:
->    - **`VCC` (TB6612FNG Pin)**: Connect to **ESP32 3.3V** (Logic power, 2.7V - 5.5V). This ensures all logic inputs (`AIN1`, `AIN2`, `PWMA`, `BIN1`, `BIN2`, `PWMB`, `STBY`) match the ESP32's 3.3V GPIO levels.
->    - **`VM` (TB6612FNG Pin)**: Connect to your **External 5.0V DC Power Supply (+)** (Motor power rail, 4.5V - 15V). **Never** power the motor rail from the ESP32 3.3V pin!
-> 3. **Standby Pin (`STBY`)**: Must be driven **HIGH** to activate the driver. The firmware drives ESP32 **GPIO 23 HIGH** at boot.
+> 1. **Common Ground is Mandatory**:
+>    - Connect ESP32 `GND`, TB6612FNG `GND` pins, Relay Module `GND`, and the External 5V Power Supply `GND (-)` together into a single reference ground.
+> 2. **Power Rail Separation**:
+>    - **TB6612FNG `VCC`**: Connect to **ESP32 3.3V** (Logic power). Ensures all digital input pins (`PWMA`, `AIN1`, `AIN2`, `STBY`) match 3.3V GPIO thresholds.
+>    - **TB6612FNG `VM`**: Connect to **External 5.0V DC Power Supply (+)** (Motor power rail). **Never** power the fan or motor rail from the ESP32 3.3V regulator pin!
+>    - **Relay Module `VCC`**: Connect to **5V DC** (or 3.3V if your relay module supports 3.3V logic/coils).
+> 3. **Humidifier Contact Isolation**:
+>    - Connect the two push-button wires from **Humidifier 1** across Relay 1's **`COM`** and **`NO`** terminals.
+>    - Connect the two push-button wires from **Humidifier 2** across Relay 2's **`COM`** and **`NO`** terminals.
+>    - **Never inject external 5V or 12V voltage into the humidifier button contacts!** The relay provides a pure dry mechanical switch closure (0V differential, identical to pressing the physical button with your finger).
 
 ---
 
@@ -21,17 +28,22 @@ This guide details the complete hardware wiring, pin assignments, electrical pro
 | :--- | :--- | :--- | :--- | :--- |
 | **TB6612FNG** | **VCC** | ESP32 **3V3** | 3.3V DC | Logic supply power |
 | **TB6612FNG** | **VM** | External **5V Power (+)** | 5.0V DC | Motor / Fan power rail |
-| **TB6612FNG** | **GND** (all) | Common **GND** | 0V Ground | Connect ESP32 GND, 5V supply (-), and module GND |
-| **TB6612FNG** | **STBY** | ESP32 **GPIO 23** | 3.3V Logic | Standby enable (Firmware drives HIGH) |
+| **TB6612FNG** | **GND** (all) | Common **GND** | 0V Ground | Tied to ESP32 GND and 5V supply (-) |
+| **TB6612FNG** | **STBY** | ESP32 **GPIO 23** | 3.3V Logic | Standby enable (Firmware drives HIGH at boot) |
 | **TB6612FNG** | **PWMA** | ESP32 **GPIO 18** | 3.3V Logic | Channel A (Fan) Speed/Gate (HIGH = 100% full ON) |
 | **TB6612FNG** | **AIN1** | ESP32 **GPIO 19** | 3.3V Logic | Channel A Direction 1 (HIGH for forward) |
 | **TB6612FNG** | **AIN2** | ESP32 **GPIO 5** | 3.3V Logic | Channel A Direction 2 (LOW for forward) |
 | **TB6612FNG** | **AO1** | **DC Fan (+) Lead** | 0V to 5V | Motor Output A1 |
 | **TB6612FNG** | **AO2** | **DC Fan (-) Lead** | 0V to GND | Motor Output A2 |
-| **TB6612FNG** | **PWMB** | ESP32 **GPIO 25** | 3.3V Logic | Channel B (Humidifier) Gate Enable |
-| **TB6612FNG** | **BIN1** | ESP32 **GPIO 26** | 3.3V Logic | Channel B Direction 1 |
-| **TB6612FNG** | **BIN2** | ESP32 **GPIO 27** | 3.3V Logic | Channel B Direction 2 |
-| **TB6612FNG** | **BO1** | **Humidifier Button Sense** | Pulled to GND on pulse | Pulse contact to trigger humidifier cycle |
+| **TB6612FNG Channel B**| *Unused* | *Disconnected* | N/A | Channel B pins (PWMB, BIN1, BIN2) are unpinned |
+| **2-Channel Relay** | **VCC** | ESP32 **5V / VIN** | 5.0V DC | Relay coil power |
+| **2-Channel Relay** | **GND** | Common **GND** | Ground | Relay ground return |
+| **2-Channel Relay** | **IN1** | ESP32 **GPIO 26** | 3.3V Logic | Relay 1 trigger (Active-LOW: LOW=Energized) |
+| **2-Channel Relay** | **IN2** | ESP32 **GPIO 27** | 3.3V Logic | Relay 2 trigger (Active-LOW: LOW=Energized) |
+| **Humidifier 1** | **Button Wire A** | Relay 1 **COM** | Dry Contact | First contact terminal of Humidifier 1 switch |
+| **Humidifier 1** | **Button Wire B** | Relay 1 **NO** | Dry Contact | Second contact terminal of Humidifier 1 switch |
+| **Humidifier 2** | **Button Wire A** | Relay 2 **COM** | Dry Contact | First contact terminal of Humidifier 2 switch |
+| **Humidifier 2** | **Button Wire B** | Relay 2 **NO** | Dry Contact | Second contact terminal of Humidifier 2 switch |
 | **DHT11 Sensor** | VCC / '+' | ESP32 **3V3** | 3.3V DC | Sensor power |
 | **DHT11 Sensor** | DATA / OUT | ESP32 **GPIO 4** | 3.3V Logic | Data bus (4.7kΩ pull-up to 3.3V recommended) |
 | **DHT11 Sensor** | GND / '-' | Common **GND** | Ground | Ground return |
@@ -39,79 +51,60 @@ This guide details the complete hardware wiring, pin assignments, electrical pro
 | **JMD0.96D-1 OLED** | GND | Common **GND** | Ground | Display ground |
 | **JMD0.96D-1 OLED** | SDA | ESP32 **GPIO 21** | 3.3V Logic | I2C Data bus |
 | **JMD0.96D-1 OLED** | SCL | ESP32 **GPIO 22** | 3.3V Logic | I2C Clock bus |
-| **Status LED** | Built-in LED | ESP32 **GPIO 2** | 3.3V Logic | WiFi status indicator |
+| **Status LED** | Built-in LED | ESP32 **GPIO 2** | 3.3V Logic | Blue LED: Blinks on boot, solid when WiFi connected |
 
 ---
 
-## 3. Channel A: DC Cooling Fan Operation
+## 3. Actuator Operating Principles
 
-The TB6612FNG drives the DC cooling fan using an integrated dual MOSFET H-bridge with internal flyback clamping diodes.
-
-### Control Logic:
-- **Fan OFF (Coast / Stop)**:
+### A. 5V DC Cooling Fan (TB6612FNG Channel A)
+- **Fan OFF (Stop / Coast)**:
   - `PWMA = LOW`, `AIN1 = LOW`, `AIN2 = LOW`
-  - Outputs `AO1` and `AO2` enter High-Z (floating stop), 0V applied across the fan.
-- **Fan ON (100% Full Speed)**:
-  - `PWMA = HIGH`, `AIN1 = HIGH`, `AIN2 = LOW`
-  - Output `AO1` connects to `VM` (+5V) and `AO2` connects to `GND`. Fan runs at full power.
+  - Output terminals `AO1` and `AO2` enter high-impedance mode (0V differential). The fan stops rotating.
+- **Fan ON (100% Full Power)**:
+  - `PWMA = HIGH`, `AIN1 = HIGH`, `AIN2 = LOW`, `STBY = HIGH`
+  - `AO1` is connected to `VM` (+5V) and `AO2` is connected to `GND`. The fan runs at full 5V CFM capacity with internal flyback clamping diode protection.
+
+### B. Dual Humidifiers (2-Channel Optocoupled Relay Module)
+- **Isolated Mechanical Shorting**:
+  - The humidifier boards use sensitive low-voltage tactile switches. Pulling them to ground with active semiconductor devices can sometimes introduce ground offsets or trigger latch-up.
+  - Using the **Relay COM and NO contacts** provides a true mechanical dry short (zero electrical risk, total galvanic isolation).
+- **Synchronous Click Sequencing**:
+  - When the humidifier command is triggered, both relays actuate in exact unison:
+  - **Power ON (1 Click)**:
+    - Relays 1 & 2 energize (`LOW` on GPIO 26 & 27) for **200 ms** (contacts closed).
+    - Relays de-energize (`HIGH`) for contacts to open.
+  - **Power OFF (2 Clicks)**:
+    - 1st click: Energize for **200 ms**, then release.
+    - Interval pause: Wait **300 ms** (contacts open).
+    - 2nd click: Energize for **200 ms**, then release.
+    - Result: Cycles the humidifier controller through intermittent mist and shuts it completely OFF.
+  - The sequence is 100% asynchronous and non-blocking via `millis()`.
 
 ---
 
-## 4. Channel B: Humidifier Tactile Button Simulation
+## 4. Serial Commands Reference
 
-Electronic mist humidifiers use a momentary push button (tactile switch) that is internally pulled up to 3.3V or 5V by the humidifier's onboard microcontroller. Pressing the button pulls the signal contact to Ground (`GND`).
-
-### Wiring for Humidifier:
-1. Locate the two terminals of the humidifier's tactile button:
-   - **Terminal 1 (Sense Line)**: Connect this to TB6612FNG **`BO1`**.
-   - **Terminal 2 (GND Line)**: Ensure the humidifier's circuit ground is tied to the **Common System GND**.
-2. **How the TB6612FNG Simulates the Button**:
-   - **Idle (Button Released)**:
-     - Firmware sets `PWMB = LOW`, `BIN1 = LOW`, `BIN2 = LOW`.
-     - Output `BO1` is in **High-Z (Floating)** state.
-     - The humidifier's internal pull-up resistor keeps the contact high. The humidifier sees the button as unpressed.
-   - **Active Press (200ms Pulse to Ground)**:
-     - Firmware sets `PWMB = HIGH`, `BIN1 = LOW`, `BIN2 = HIGH`.
-     - In this mode, the TB6612FNG turns ON its low-side MOSFET, firmly clamping **`BO1` to Ground (`LOW`)**.
-     - The humidifier microcontroller detects a genuine physical button press.
-   - **Button Release**:
-     - After 200 ms, firmware resets Channel B to High-Z.
-
-### Click Sequences:
-- **Humidifier ON (1 Click)**:
-  - Pulses `BO1` LOW for **200 ms**, then returns to High-Z.
-- **Humidifier OFF (2 Clicks with 300ms pause)**:
-  - Pulses `BO1` LOW for **200 ms** (1st click).
-  - Pauses in High-Z for **300 ms**.
-  - Pulses `BO1` LOW for **200 ms** (2nd click).
-  - Returns to High-Z.
-
-All timing is handled by a non-blocking asynchronous state machine in the firmware (`updateHumidifierStateMachine()`), so sensor readings, OLED updates, and cloud sync are never blocked.
-
----
-
-## 5. Serial Commands
-
-Open the Arduino Serial Monitor at **115200 baud** (Newline line ending):
+Open the Serial Monitor at **115200 baud** with Newline line ending:
 
 | Command | Action |
 | :--- | :--- |
-| `FAN ON` | Turns DC fan ON immediately (TB6612FNG Channel A forward) |
+| `FAN ON` | Turns DC fan ON immediately (TB6612FNG Channel A at 100%) |
 | `FAN OFF` | Turns DC fan OFF immediately (TB6612FNG Channel A stop) |
 | `FAN AUTO` | Returns fan to automatic temperature threshold hysteresis (default 40°C ON / 38°C OFF) |
-| `HUM ON` | Simulates 1 button click (200ms pull-down pulse) |
-| `HUM OFF` | Simulates 2 button clicks (200ms pulse, 300ms pause, 200ms pulse) |
-| `HUM AUTO` | Returns humidifier to automatic relative humidity threshold |
-| `STATUS` | Prints current temperature, humidity, fan state, humidifier state, WiFi status, and IP |
+| `HUM ON` | Pulses Relays 1 & 2 together with 1 click (200ms contact short) |
+| `HUM OFF` | Pulses Relays 1 & 2 together with 2 clicks (200ms short, 300ms pause, 200ms short) |
+| `HUM AUTO` | Returns both humidifiers to automatic relative humidity threshold |
+| `STATUS` | Prints complete hardware status, pin mappings, live readings, and WiFi connection |
 | `HELP` | Prints available command reference |
 
 ---
 
-## 6. OLED Screen Layout
+## 5. OLED Display Layout (SSD1306 128x64)
 
-The JMD0.96D-1 SSD1306 (128x64) screen displays live status:
-- **Row 1**: `FLORIFY CLIMATE` header with `[WIFI]` or `[OFFL]` indicator.
-- **Row 2**: Real-time cabin temperature (e.g. `Temp: 28.4 C`).
-- **Row 3**: Real-time relative humidity (e.g. `Humidity: 62.0 %`).
-- **Row 4**: Fan status: `Fan: ON (AUTO)` or `Fan: OFF (MAN)`.
-- **Row 5**: Humidifier status: `Humidifier: ON`, `OFF`, or `CLICKING..` during active pulse sequence.
+The JMD0.96D-1 display updates continuously:
+- **Line 0**: `FLORIFY CLIMATE    [WIFI]` (or `[OFFL]`)
+- **Line 1**: `Temp: 28.5 C`
+- **Line 2**: `Humidity: 62.1 %`
+- **Line 3**: `Fan: ON (AUTO)` or `Fan: OFF (MAN)`
+- **Line 4**: `Humidifier: ON`, `Humidifier: OFF`, or `Humidifier: PULSING..`

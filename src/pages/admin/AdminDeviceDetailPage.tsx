@@ -356,7 +356,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
               <div>
                 <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
                   <Power className="h-4 w-4 text-[#C72C5E]" />
-                  Cooling OFF / ON Controls (GPIO 18 / 26)
+                  Cooling OFF / ON Controls (TB6612FNG: GPIO 18/19/5)
                 </h3>
                 <p className="text-xs text-[#826674]">
                   Operating mode:{' '}
@@ -414,7 +414,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
               <div>
                 <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
                   <Droplets className="h-4 w-4 text-sky-600" />
-                  Humidifier Override Controls (GPIO 19 / 27)
+                  Humidifier Override Controls (Dual Relays: GPIO 26 & 27)
                 </h3>
                 <p className="text-xs text-[#826674]">
                   Operating mode:{' '}
