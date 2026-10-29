@@ -1,6 +1,6 @@
 /* ==============================================================================
  * Florify IoT - ESP32 Climate Monitor & Actuator Firmware
- * Module: JMD0.96D-1 OLED + DHT11 Sensor + 2-Channel Active-HIGH Relay Module
+ * Module: JMD0.96D-1 OLED + DHT11 Sensor + TB6612FNG Dual H-Bridge Motor Driver
  * 
  * Hardware Configuration:
  *   - ESP32 Development Board (NodeMCU / ESP32 DevKit V1)
@@ -8,14 +8,33 @@
  *   - JMD0.96D-1 0.96" Monochrome I2C OLED (SSD1306 128x64):
  *       * SDA: GPIO 21
  *       * SCL: GPIO 22
- *       * VCC: 3.3V / 5V
+ *       * VCC: 3.3V
  *       * GND: GND
  *       * Default I2C Address: 0x3C (auto-falls back to 0x3D)
- *   - Relay Channel 1 (Cooling Fan): GPIO 18 [Active-HIGH continuous ON/OFF]
- *   - Relay Channel 2 (Humidifier): GPIO 19 [Active-HIGH momentary button clicks]
- *       * 1 click (200ms pulse) to turn ON
- *       * 2 clicks (200ms pulse, 300ms pause, 200ms pulse) to turn OFF
- *   - Trigger Polarity: Active-HIGH (HIGH = Energized/ON, LOW = Standby/OFF)
+ * 
+ *   - TB6612FNG Dual H-Bridge Driver:
+ *       * VCC:  ESP32 3.3V (Logic supply)
+ *       * VM:   External 5.0V DC Power Supply (+)
+ *       * GND:  Common Ground (ESP32 GND + 5V Supply GND + TB6612FNG GND)
+ *       * STBY: GPIO 23 (Active HIGH standby pin; driven HIGH to enable driver)
+ *       
+ *       * Channel A (5V DC Cooling Fan):
+ *           - PWMA: GPIO 18 (Speed / Enable: HIGH = 100% full-power, LOW = OFF)
+ *           - AIN1: GPIO 19 (Forward direction: HIGH)
+ *           - AIN2: GPIO 5  (Forward direction: LOW)
+ *           - Outputs: Fan (+) connected to AO1, Fan (-) connected to AO2
+ *       
+ *       * Channel B (Humidifier Tactile Button Simulator):
+ *           - PWMB: GPIO 25 (Gate enable)
+ *           - BIN1: GPIO 26 (Direction 1)
+ *           - BIN2: GPIO 27 (Direction 2)
+ *           - Output: BO1 connected to Humidifier button signal/sense pin.
+ *                     Humidifier circuit ground tied to common system GND.
+ *           - Behavior:
+ *               * Idle / Released: BO1 is High-Z (Floating, unpressed).
+ *               * 1 Click ON: BO1 pulled to GND (LOW) for 200 ms.
+ *               * 2 Clicks OFF: BO1 pulled to GND for 200 ms, 300 ms pause, 200 ms pulse.
+ * 
  *   - Status Indicator LED: GPIO 2 (Built-in Blue LED)
  * 
  * Cloud Communication:
@@ -47,18 +66,24 @@
 #define SCREEN_HEIGHT     64      // OLED display height in pixels
 #define OLED_RESET        -1      // Reset pin (-1 if shared or not present)
 
-#define RELAY_FAN_PIN     18      // Relay 1: Fan continuous ON/OFF
-#define RELAY_HUM_PIN     19      // Relay 2: Humidifier momentary clicks
+// TB6612FNG Driver Pins
+#define TB_STBY_PIN       23      // Standby pin (HIGH = enabled)
+
+// Channel A: 5V DC Cooling Fan
+#define TB_PWMA_PIN       18      // Fan Speed/Gate (HIGH = Full ON, LOW = OFF)
+#define TB_AIN1_PIN       19      // Fan Direction 1
+#define TB_AIN2_PIN       5       // Fan Direction 2
+
+// Channel B: Humidifier Button Simulator
+#define TB_PWMB_PIN       25      // Humidifier Gate Enable
+#define TB_BIN1_PIN       26      // Humidifier Direction 1
+#define TB_BIN2_PIN       27      // Humidifier Direction 2
+
 #define STATUS_LED_PIN    2       // Built-in Blue LED
 
-// Relay Trigger Polarity (Active-HIGH verified hardware)
-// false = Active-HIGH (HIGH = ON, LOW = OFF)
-// true  = Active-LOW  (LOW = ON, HIGH = OFF)
-const bool RELAY_ACTIVE_LOW = false;
-
-// Humidifier Click Pulse Durations (Milliseconds)
-const unsigned long CLICK_PULSE_MS    = 200;  // Relay energize duration (button contact press)
-const unsigned long CLICK_INTERVAL_MS = 300;  // In-between delay for 2-click OFF sequence
+// Humidifier Button Timing (Milliseconds)
+const unsigned long CLICK_PULSE_MS    = 200;  // Button contact pulled to GND duration
+const unsigned long CLICK_INTERVAL_MS = 300;  // Pause between clicks for 2-click OFF sequence
 
 // ==========================================
 // 2. NETWORK & FIREBASE CREDENTIALS
@@ -73,7 +98,7 @@ const char* FIREBASE_API_KEY     = "AIzaSyBHQc-tMbFYHlvpsds7oTA635Yebr7k0_o";
 
 // Unique Device ID registered in the Florify Dashboard
 const char* DEVICE_ID        = "ESP32-FLORIFY-01";
-const char* FIRMWARE_VERSION = "v3.2.0-active-high-duo";
+const char* FIRMWARE_VERSION = "v4.0.0-tb6612fng-driver";
 
 // ==========================================
 // 3. OBJECTS & GLOBAL STATE VARIABLES
@@ -126,13 +151,68 @@ const unsigned long TELEMETRY_INTERVAL_MS   = 6000;   // Push to Firestore every
 const unsigned long CONFIG_POLL_INTERVAL_MS = 15000;  // Poll cloud config every 15 seconds
 
 // ==========================================
-// 4. LOW-LEVEL RELAY CONTROL (ACTIVE-HIGH)
+// 4. LOW-LEVEL TB6612FNG MOTOR DRIVER CONTROL
 // ==========================================
-void setRelay(int pin, bool on) {
-  if (RELAY_ACTIVE_LOW) {
-    digitalWrite(pin, on ? LOW : HIGH);
+
+// Initialize and enable TB6612FNG
+void initMotorDriver() {
+  pinMode(TB_STBY_PIN, OUTPUT);
+  pinMode(TB_PWMA_PIN, OUTPUT);
+  pinMode(TB_AIN1_PIN, OUTPUT);
+  pinMode(TB_AIN2_PIN, OUTPUT);
+  pinMode(TB_PWMB_PIN, OUTPUT);
+  pinMode(TB_BIN1_PIN, OUTPUT);
+  pinMode(TB_BIN2_PIN, OUTPUT);
+
+  // Take driver out of standby (Active HIGH)
+  digitalWrite(TB_STBY_PIN, HIGH);
+
+  // Initialize Fan in Safe OFF state (0V across AO1/AO2)
+  digitalWrite(TB_PWMA_PIN, LOW);
+  digitalWrite(TB_AIN1_PIN, LOW);
+  digitalWrite(TB_AIN2_PIN, LOW);
+
+  // Initialize Humidifier in High-Z Idle state (unpressed, floating)
+  digitalWrite(TB_PWMB_PIN, LOW);
+  digitalWrite(TB_BIN1_PIN, LOW);
+  digitalWrite(TB_BIN2_PIN, LOW);
+}
+
+// Channel A: Set DC Fan State (Full-Power ON / OFF)
+void setFanDrive(bool on) {
+  if (on) {
+    // Forward rotation at full 5V power:
+    // AIN1 = HIGH, AIN2 = LOW, PWMA = HIGH
+    digitalWrite(TB_AIN1_PIN, HIGH);
+    digitalWrite(TB_AIN2_PIN, LOW);
+    digitalWrite(TB_PWMA_PIN, HIGH);
   } else {
-    digitalWrite(pin, on ? HIGH : LOW);
+    // Stop / Coast:
+    // PWMA = LOW, AIN1 = LOW, AIN2 = LOW (High-Z stop)
+    digitalWrite(TB_PWMA_PIN, LOW);
+    digitalWrite(TB_AIN1_PIN, LOW);
+    digitalWrite(TB_AIN2_PIN, LOW);
+  }
+}
+
+// Channel B: Humidifier Button Simulator
+// User configuration: Pulse BO1 LOW to pull button contact to ground
+void setHumidifierPress(bool pressed) {
+  if (pressed) {
+    // Active Contact Press:
+    // With BIN1 = LOW, BIN2 = HIGH, PWMB = HIGH:
+    // BO1 is actively driven to LOW (GND through low-side MOSFET)
+    digitalWrite(TB_BIN1_PIN, LOW);
+    digitalWrite(TB_BIN2_PIN, HIGH);
+    digitalWrite(TB_PWMB_PIN, HIGH);
+  } else {
+    // Idle / Released State:
+    // With PWMB = LOW, BIN1 = LOW, BIN2 = LOW:
+    // Both BO1 and BO2 are High-Z (Floating / Open circuit).
+    // The humidifier's internal pull-up resistor stays at its undisturbed high level.
+    digitalWrite(TB_PWMB_PIN, LOW);
+    digitalWrite(TB_BIN1_PIN, LOW);
+    digitalWrite(TB_BIN2_PIN, LOW);
   }
 }
 
@@ -167,14 +247,14 @@ void triggerHumidifier(bool turnOn) {
   currentHumState = turnOn;
   humTargetIsOff = !turnOn;
 
-  // Start 1st click pulse (energize relay: HIGH)
-  setRelay(RELAY_HUM_PIN, true);
+  // Start 1st click pulse (Pull BO1 to GND)
+  setHumidifierPress(true);
   humClickTimer = millis();
   humClickState = HUM_FIRST_CLICK;
 
   Serial.println(turnOn
-    ? F("[Humidifier] Sending 1 ON click...")
-    : F("[Humidifier] Sending 2 OFF clicks (300ms pause)..."));
+    ? F("[Humidifier] Sending 1 ON click (200ms pull-down)...")
+    : F("[Humidifier] Sending 2 OFF clicks (200ms pull-down, 300ms pause)..."));
 }
 
 void updateHumidifierStateMachine() {
@@ -185,8 +265,8 @@ void updateHumidifierStateMachine() {
   switch (humClickState) {
     case HUM_FIRST_CLICK:
       if (now - humClickTimer >= CLICK_PULSE_MS) {
-        // Release 1st click (de-energize relay: LOW)
-        setRelay(RELAY_HUM_PIN, false);
+        // Release 1st click (Return BO1 to High-Z floating)
+        setHumidifierPress(false);
         humClickTimer = now;
 
         if (humTargetIsOff) {
@@ -201,8 +281,8 @@ void updateHumidifierStateMachine() {
 
     case HUM_WAIT_INTERVAL:
       if (now - humClickTimer >= CLICK_INTERVAL_MS) {
-        // Start 2nd click pulse (energize relay: HIGH)
-        setRelay(RELAY_HUM_PIN, true);
+        // Start 2nd click pulse (Pull BO1 to GND)
+        setHumidifierPress(true);
         humClickTimer = now;
         humClickState = HUM_SECOND_CLICK;
         Serial.println(F("[Humidifier] OFF click 2 started."));
@@ -211,15 +291,15 @@ void updateHumidifierStateMachine() {
 
     case HUM_SECOND_CLICK:
       if (now - humClickTimer >= CLICK_PULSE_MS) {
-        // Release 2nd click (de-energize relay: LOW)
-        setRelay(RELAY_HUM_PIN, false);
+        // Release 2nd click (Return BO1 to High-Z floating)
+        setHumidifierPress(false);
         humClickState = HUM_IDLE;
         Serial.println(F("[Humidifier] OFF 2-click completed. State: OFF"));
       }
       break;
 
     default:
-      setRelay(RELAY_HUM_PIN, false);
+      setHumidifierPress(false);
       humClickState = HUM_IDLE;
       break;
   }
@@ -288,7 +368,7 @@ void renderOledDisplay() {
 // 8. CLOSED-LOOP ACTUATION EVALUATION
 // ==========================================
 void evaluateActuators(float tempC, float humRH) {
-  // A. Cooling Fan Control (GPIO 18)
+  // A. Cooling Fan Control (TB6612FNG Channel A)
   if (currentConfig.fanMode == "FORCE_ON") {
     isFanActive = true;
   } else if (currentConfig.fanMode == "FORCE_OFF") {
@@ -304,10 +384,10 @@ void evaluateActuators(float tempC, float humRH) {
     isFanActive = false;
   }
 
-  // Apply to Fan Relay (Active-HIGH)
-  setRelay(RELAY_FAN_PIN, isFanActive);
+  // Apply to Fan Driver
+  setFanDrive(isFanActive);
 
-  // B. Humidifier Momentary Control (GPIO 19)
+  // B. Humidifier Momentary Control (TB6612FNG Channel B)
   bool targetHumState = false;
   if (currentConfig.mistMode == "FORCE_ON") {
     targetHumState = true;
@@ -454,56 +534,14 @@ void sendTelemetryToFirestore(float tempC, float humRH) {
 
     int rCode = https.POST(rBody);
     if (rCode == HTTP_CODE_OK || rCode == 200) {
-      Serial.println(F("[Firestore] Time-series sample logged to /readings."));
+      Serial.println(F("[Firestore] Historical reading logged to /readings subcollection."));
     }
     https.end();
   }
 }
 
 // ==========================================
-// 11. FIREBASE FIRESTORE: BOOTSTRAP DEFAULT CONFIG
-// ==========================================
-void bootstrapRemoteConfig() {
-  if (WiFi.status() != WL_CONNECTED) return;
-
-  WiFiClientSecure client;
-  client.setInsecure();
-
-  HTTPClient https;
-  String patchUrl = "https://firestore.googleapis.com/v1/projects/";
-  patchUrl += FIREBASE_PROJECT_ID;
-  patchUrl += "/databases/";
-  patchUrl += FIREBASE_DATABASE_ID;
-  patchUrl += "/documents/devices/";
-  patchUrl += DEVICE_ID;
-  patchUrl += "/config/current?key=";
-  patchUrl += FIREBASE_API_KEY;
-
-  if (https.begin(client, patchUrl)) {
-    https.addHeader("Content-Type", "application/json");
-
-    StaticJsonDocument<512> doc;
-    JsonObject fields = doc.createNestedObject("fields");
-
-    fields["temperatureOnC"]["doubleValue"] = 40.0;
-    fields["temperatureOffC"]["doubleValue"] = 38.0;
-    fields["humidityOnRH"]["doubleValue"]   = 45.0;
-    fields["humidityOffRH"]["doubleValue"]  = 60.0;
-    fields["fanMode"]["stringValue"]        = "AUTO";
-    fields["mistMode"]["stringValue"]       = "FORCE_OFF";
-    fields["updatedAt"]["stringValue"]      = getIsoTimestamp();
-
-    String body;
-    serializeJson(doc, body);
-
-    int code = https.PATCH(body);
-    Serial.printf("[Cloud Sync] Default config bootstrap response: %d\n", code);
-    https.end();
-  }
-}
-
-// ==========================================
-// 12. FIREBASE FIRESTORE REST: POLL CONFIG
+// 11. FIREBASE FIRESTORE REST: REMOTE CONFIG POLL
 // ==========================================
 void pollRemoteConfig() {
   if (WiFi.status() != WL_CONNECTED) return;
@@ -512,85 +550,94 @@ void pollRemoteConfig() {
   client.setInsecure();
 
   HTTPClient https;
+
   String configUrl = "https://firestore.googleapis.com/v1/projects/";
   configUrl += FIREBASE_PROJECT_ID;
   configUrl += "/databases/";
   configUrl += FIREBASE_DATABASE_ID;
   configUrl += "/documents/devices/";
   configUrl += DEVICE_ID;
-  configUrl += "/config/current?key=";
+  configUrl += "/config/current";
+  configUrl += "?key=";
   configUrl += FIREBASE_API_KEY;
 
   if (https.begin(client, configUrl)) {
     int httpCode = https.GET();
-    if (httpCode == 200) {
-      String payload = https.getString();
+    if (httpCode == HTTP_CODE_OK || httpCode == 200) {
+      String response = https.getString();
       StaticJsonDocument<1024> doc;
-      DeserializationError err = deserializeJson(doc, payload);
+      DeserializationError err = deserializeJson(doc, response);
 
       if (!err && doc.containsKey("fields")) {
-        JsonObject f = doc["fields"];
+        JsonObject fields = doc["fields"];
 
-        if (f.containsKey("temperatureOnC")) {
-          if (f["temperatureOnC"].containsKey("doubleValue")) {
-            currentConfig.tempOnC = f["temperatureOnC"]["doubleValue"].as<float>();
-          } else if (f["temperatureOnC"].containsKey("integerValue")) {
-            currentConfig.tempOnC = String(f["temperatureOnC"]["integerValue"].as<const char*>()).toFloat();
-          }
+        if (fields.containsKey("temperatureOnC")) {
+          currentConfig.tempOnC = fields["temperatureOnC"]["doubleValue"] | currentConfig.tempOnC;
         }
-        if (f.containsKey("temperatureOffC")) {
-          if (f["temperatureOffC"].containsKey("doubleValue")) {
-            currentConfig.tempOffC = f["temperatureOffC"]["doubleValue"].as<float>();
-          } else if (f["temperatureOffC"].containsKey("integerValue")) {
-            currentConfig.tempOffC = String(f["temperatureOffC"]["integerValue"].as<const char*>()).toFloat();
-          }
+        if (fields.containsKey("temperatureOffC")) {
+          currentConfig.tempOffC = fields["temperatureOffC"]["doubleValue"] | currentConfig.tempOffC;
         }
-        if (f.containsKey("humidityOnRH")) {
-          if (f["humidityOnRH"].containsKey("doubleValue")) {
-            currentConfig.humOnRH = f["humidityOnRH"]["doubleValue"].as<float>();
-          } else if (f["humidityOnRH"].containsKey("integerValue")) {
-            currentConfig.humOnRH = String(f["humidityOnRH"]["integerValue"].as<const char*>()).toFloat();
-          }
+        if (fields.containsKey("fanControlEnabled")) {
+          currentConfig.tempEnabled = fields["fanControlEnabled"]["booleanValue"] | currentConfig.tempEnabled;
         }
-        if (f.containsKey("humidityOffRH")) {
-          if (f["humidityOffRH"].containsKey("doubleValue")) {
-            currentConfig.humOffRH = f["humidityOffRH"]["doubleValue"].as<float>();
-          } else if (f["humidityOffRH"].containsKey("integerValue")) {
-            currentConfig.humOffRH = String(f["humidityOffRH"]["integerValue"].as<const char*>()).toFloat();
-          }
-        }
-        if (f.containsKey("fanMode") && f["fanMode"].containsKey("stringValue")) {
-          String newFanMode = f["fanMode"]["stringValue"].as<String>();
-          if (newFanMode != currentConfig.fanMode) {
-            Serial.printf("[Cloud Sync] Fan mode updated from %s to %s\n", currentConfig.fanMode.c_str(), newFanMode.c_str());
+        if (fields.containsKey("fanMode")) {
+          String newFanMode = fields["fanMode"]["stringValue"].as<String>();
+          if (newFanMode.length() > 0 && newFanMode != currentConfig.fanMode) {
+            Serial.printf("[Cloud Config] Fan Mode changed: %s -> %s\n", currentConfig.fanMode.c_str(), newFanMode.c_str());
             currentConfig.fanMode = newFanMode;
           }
         }
-        if (f.containsKey("mistMode") && f["mistMode"].containsKey("stringValue")) {
-          String newMistMode = f["mistMode"]["stringValue"].as<String>();
-          if (newMistMode != currentConfig.mistMode) {
-            Serial.printf("[Cloud Sync] Mist mode updated from %s to %s\n", currentConfig.mistMode.c_str(), newMistMode.c_str());
+
+        if (fields.containsKey("humidityOnRH")) {
+          currentConfig.humOnRH = fields["humidityOnRH"]["doubleValue"] | currentConfig.humOnRH;
+        }
+        if (fields.containsKey("humidityOffRH")) {
+          currentConfig.humOffRH = fields["humidityOffRH"]["doubleValue"] | currentConfig.humOffRH;
+        }
+        if (fields.containsKey("mistControlEnabled")) {
+          currentConfig.humEnabled = fields["mistControlEnabled"]["booleanValue"] | currentConfig.humEnabled;
+        }
+        if (fields.containsKey("mistMode")) {
+          String newMistMode = fields["mistMode"]["stringValue"].as<String>();
+          if (newMistMode.length() > 0 && newMistMode != currentConfig.mistMode) {
+            Serial.printf("[Cloud Config] Humidifier Mode changed: %s -> %s\n", currentConfig.mistMode.c_str(), newMistMode.c_str());
             currentConfig.mistMode = newMistMode;
           }
         }
 
-        Serial.printf("[Cloud Sync] Config: FanMode=%s | MistMode=%s\n",
-          currentConfig.fanMode.c_str(), currentConfig.mistMode.c_str());
+        // Check for timed overrides expiry
+        if (fields.containsKey("overrideExpiresAt") && currentConfig.fanMode != "AUTO") {
+          String expiresAtStr = fields["overrideExpiresAt"]["stringValue"].as<String>();
+          if (expiresAtStr.length() > 0) {
+            String nowIso = getIsoTimestamp();
+            if (nowIso > expiresAtStr) {
+              Serial.println(F("[Cloud Config] Fan override expired! Returning to AUTO."));
+              currentConfig.fanMode = "AUTO";
+            }
+          }
+        }
 
-        // Immediately evaluate actuators with latest remote config
+        if (fields.containsKey("mistOverrideExpiresAt") && currentConfig.mistMode != "AUTO") {
+          String mistExpiresAt = fields["mistOverrideExpiresAt"]["stringValue"].as<String>();
+          if (mistExpiresAt.length() > 0) {
+            String nowIso = getIsoTimestamp();
+            if (nowIso > mistExpiresAt) {
+              Serial.println(F("[Cloud Config] Mist override expired! Returning to AUTO."));
+              currentConfig.mistMode = "AUTO";
+            }
+          }
+        }
+
         evaluateActuators(lastTempC, lastHumRH);
         renderOledDisplay();
       }
-    } else if (httpCode == 404) {
-      Serial.println(F("[Cloud Sync] Config document 404. Bootstrapping initial document..."));
-      bootstrapRemoteConfig();
     }
     https.end();
   }
 }
 
 // ==========================================
-// 13. SERIAL COMMAND PARSER (TESTING / DIAGNOSTICS)
+// 12. SERIAL COMMAND PARSER
 // ==========================================
 void handleSerialCommands() {
   if (!Serial.available()) return;
@@ -602,15 +649,15 @@ void handleSerialCommands() {
   if (cmd == "FAN ON") {
     currentConfig.fanMode = "FORCE_ON";
     isFanActive = true;
-    setRelay(RELAY_FAN_PIN, true);
+    setFanDrive(true);
     renderOledDisplay();
-    Serial.println(F("Fan turned ON."));
+    Serial.println(F("Fan turned ON (TB6612FNG Channel A: 100% full speed)."));
   } else if (cmd == "FAN OFF") {
     currentConfig.fanMode = "FORCE_OFF";
     isFanActive = false;
-    setRelay(RELAY_FAN_PIN, false);
+    setFanDrive(false);
     renderOledDisplay();
-    Serial.println(F("Fan turned OFF."));
+    Serial.println(F("Fan turned OFF (TB6612FNG Channel A: Coast/Stop)."));
   } else if (cmd == "FAN AUTO") {
     currentConfig.fanMode = "AUTO";
     evaluateActuators(lastTempC, lastHumRH);
@@ -640,6 +687,7 @@ void handleSerialCommands() {
     Serial.println(F("===== CURRENT STATUS ====="));
     Serial.print(F("Device ID: ")); Serial.println(DEVICE_ID);
     Serial.print(F("Firmware: ")); Serial.println(FIRMWARE_VERSION);
+    Serial.print(F("Driver: TB6612FNG (Dual H-Bridge Motor Driver)\n"));
     Serial.print(F("WiFi: ")); Serial.println(WiFi.status() == WL_CONNECTED ? "CONNECTED" : "DISCONNECTED");
     if (WiFi.status() == WL_CONNECTED) {
       Serial.print(F("IP: ")); Serial.println(WiFi.localIP());
@@ -657,11 +705,11 @@ void handleSerialCommands() {
   } else if (cmd == "HELP") {
     Serial.println();
     Serial.println(F("===== ESP32 CLIMATE COMMANDS ====="));
-    Serial.println(F("FAN ON     - Turn fan on"));
-    Serial.println(F("FAN OFF    - Turn fan off"));
+    Serial.println(F("FAN ON     - Turn fan on (TB6612FNG Channel A forward)"));
+    Serial.println(F("FAN OFF    - Turn fan off (TB6612FNG Channel A stop)"));
     Serial.println(F("FAN AUTO   - Return fan to auto threshold"));
-    Serial.println(F("HUM ON     - Simulate 1 button click"));
-    Serial.println(F("HUM OFF    - Simulate 2 clicks (300ms pause)"));
+    Serial.println(F("HUM ON     - Simulate 1 button click (BO1 pull to GND 200ms)"));
+    Serial.println(F("HUM OFF    - Simulate 2 clicks (200ms pulse, 300ms pause, 200ms pulse)"));
     Serial.println(F("HUM AUTO   - Return humidifier to auto threshold"));
     Serial.println(F("STATUS     - Show current status"));
     Serial.println(F("HELP       - Show commands"));
@@ -673,19 +721,14 @@ void handleSerialCommands() {
 }
 
 // ==========================================
-// 14. SETUP
+// 13. SETUP
 // ==========================================
 void setup() {
   Serial.begin(115200);
   delay(300);
 
-  // 1. Initialize Relay Pins in Push-Pull OUTPUT Mode (Active-HIGH)
-  pinMode(RELAY_FAN_PIN, OUTPUT);
-  pinMode(RELAY_HUM_PIN, OUTPUT);
-
-  // Keep both relays safely OFF at startup (LOW for Active-HIGH)
-  setRelay(RELAY_FAN_PIN, false);
-  setRelay(RELAY_HUM_PIN, false);
+  // 1. Initialize TB6612FNG Motor Driver Pins
+  initMotorDriver();
 
   // Status LED
   pinMode(STATUS_LED_PIN, OUTPUT);
@@ -738,12 +781,12 @@ void setup() {
 
   Serial.println();
   Serial.println(F("ESP32 Climate Controller Ready!"));
-  Serial.println(F("Relay Logic: Active-HIGH (setRelay LOW = OFF, HIGH = ON)"));
+  Serial.println(F("Driver: TB6612FNG Dual H-Bridge (Ch A: 5V DC Fan, Ch B: Humidifier Pull-to-GND)"));
   Serial.println(F("Type HELP in Serial Monitor for available commands."));
 }
 
 // ==========================================
-// 15. MAIN SUPER-LOOP
+// 14. MAIN SUPER-LOOP
 // ==========================================
 void loop() {
   unsigned long currentMillis = millis();

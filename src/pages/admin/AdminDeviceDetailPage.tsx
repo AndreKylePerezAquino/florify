@@ -22,7 +22,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   KeyRound,
-  Radio,
   Cpu,
   Trash2,
 } from 'lucide-react';
@@ -522,31 +521,6 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
       {/* Historical Telemetry Chart */}
       <HistoricalChart readings={liveReadings} config={liveConfig} />
 
-      {/* Hardware Diagnostics & Metadata */}
-      <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3 text-xs">
-        <h4 className="font-bold text-[#2E1826] flex items-center gap-1.5">
-          <Radio className="h-4 w-4 text-[#C72C5E]" />
-          Hardware & Firmware Diagnostics
-        </h4>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
-          <div className="p-3 bg-[#FFF7F9]/60 rounded-lg border border-[#FDC3D1]/60">
-            <span className="text-[#826674] block text-[11px]">Firmware Version</span>
-            <span className="font-mono font-bold text-sm text-[#2E1826]">{device.firmwareVersion}</span>
-          </div>
-          <div className="p-3 bg-[#FFF7F9]/60 rounded-lg border border-[#FDC3D1]/60">
-            <span className="text-[#826674] block text-[11px]">Sensor Type</span>
-            <span className="font-mono font-semibold text-xs text-[#2E1826]">
-              {device.sensorType || 'DHT11'} (Temp & Humidity)
-            </span>
-          </div>
-          <div className="p-3 bg-[#FFF7F9]/60 rounded-lg border border-[#FDC3D1]/60">
-            <span className="text-[#826674] block text-[11px]">Last Heartbeat / Seen</span>
-            <span className="font-mono text-xs text-[#2E1826]">
-              {device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString() : 'Never'}
-            </span>
-          </div>
-        </div>
-      </div>
 
       {/* Override Duration Modal */}
       {overrideModalOpen && (

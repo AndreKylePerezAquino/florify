@@ -4,6 +4,22 @@ This document maintains the official version history of ESP32 firmware variants 
 
 ---
 
+## ESP32 ver 4.0: TB6612FNG Dual H-Bridge Motor Driver (`esp32_florify_jmd096_dual_relay.ino` & `esp32_relay_controller.ino`)
+- **Release Version**: `v4.0.0-tb6612fng-driver`
+- **Key Enhancements**:
+  - **Adapted to Toshiba TB6612FNG Dual H-Bridge Driver**:
+    - Completely replaces mechanical/optocoupled relays with silent, solid-state dual MOSFET driver.
+    - **Channel A**: Controls 5V DC cooling fan (`AO1`/`AO2`) with full-power forward drive (`PWMA = GPIO 18`, `AIN1 = GPIO 19`, `AIN2 = GPIO 5`).
+    - **Channel B**: Simulates electronic humidifier tactile button presses by pulling contact line to ground (`BO1`) with High-Z open circuit idle (`PWMB = GPIO 25`, `BIN1 = GPIO 26`, `BIN2 = GPIO 27`).
+    - **Standby (`STBY`) Pin**: Hardware standby controlled via `GPIO 23` (driven HIGH for active drive).
+  - **Preserved Systems**:
+    - DHT11 sensor sampling on GPIO 4 with nan filtering.
+    - JMD0.96D-1 SSD1306 OLED display on GPIO 21 (SDA) and GPIO 22 (SCL).
+    - Serial monitor commands (`FAN ON/OFF/AUTO`, `HUM ON/OFF/AUTO`, `STATUS`, `HELP`) at 115200 baud.
+    - Direct Google Firebase Firestore HTTPS REST client (telemetry summary, `/readings` time-series, and remote config sync).
+
+---
+
 ## ESP32 ver 3.1: Open-Drain Safe Drive + Cloud Sync Bootstrap (`esp32_florify_jmd096_dual_relay.ino` & `esp32_relay_controller.ino`)
 - **Release Version**: `v3.1.0-open-drain-dual-relay`
 - **Key Enhancements**:
