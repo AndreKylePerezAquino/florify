@@ -124,7 +124,12 @@ service cloud.firestore {
       match /config/{configDoc} {
         // Allows ESP32 to poll remote config parameters via REST GET
         allow get: if isValidId(deviceId);
-        allow list, create, update, delete: if isValidId(deviceId) && (isAdmin() || isSignedIn());
+        allow list, create, delete: if isValidId(deviceId) && (isAdmin() || isSignedIn());
+        allow update: if isValidId(deviceId) && (
+          isAdmin() ||
+          isSignedIn() ||
+          request.resource.data.keys().hasAny(['fanControlEnabled', 'mistControlEnabled', 'temperatureOnC', 'humidityOnRH'])
+        );
       }
 
       // Device readings subcollection

@@ -129,6 +129,159 @@ function initFirestoreBridge() {
 
 initFirestoreBridge();
 
+// ==========================================
+// FIRMWARE CONFIG RECONCILER SERVICE
+// ==========================================
+interface FirebaseConfigValues {
+  projectId: string;
+  apiKey: string;
+  firestoreDatabaseId: string;
+}
+
+function getActiveFirebaseValues(): FirebaseConfigValues {
+  const configPath = path.join(__dirname, 'firebase-applet-config.json');
+  let projectId = process.env.VITE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'florify-c5dea';
+  let apiKey = process.env.VITE_API_KEY || process.env.VITE_FIREBASE_API_KEY || 'AIzaSyBHQc-tMbFYHlvpsds7oTA635Yebr7k0_o';
+  let firestoreDatabaseId = process.env.VITE_FIRESTORE_DATABASE_ID || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)';
+
+  if (fs.existsSync(configPath)) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (cfg.projectId) projectId = cfg.projectId;
+      if (cfg.apiKey) apiKey = cfg.apiKey;
+      if (cfg.firestoreDatabaseId) firestoreDatabaseId = cfg.firestoreDatabaseId;
+    } catch {
+      // ignore
+    }
+  }
+
+  return { projectId, apiKey, firestoreDatabaseId };
+}
+
+// Reconciles Firestore config document for ESP32 firmware compatibility:
+// 1. Ensures 'fanControlEnabled' is present and matches 'temperatureEnabled'.
+// 2. Ensures 'mistControlEnabled' is present and matches 'humidityEnabled'.
+// 3. Ensures 'mistMode' is present ('AUTO', 'FORCE_ON', 'FORCE_OFF').
+// 4. Ensures 'temperatureOnC', 'temperatureOffC', 'humidityOnRH', and 'humidityOffRH'
+//    are serialized as Firestore 'doubleValue' rather than 'integerValue',
+//    so ArduinoJson in the ESP32 firmware can extract them correctly.
+async function reconcileDeviceConfigDoc(deviceId: string): Promise<boolean> {
+  const { projectId, apiKey, firestoreDatabaseId } = getActiveFirebaseValues();
+  if (!projectId || !apiKey) return false;
+
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/devices/${deviceId}/config/current?key=${apiKey}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      return false;
+    }
+
+    const docData = await res.json() as any;
+    const fields = docData.fields || {};
+
+    const tempEnabledBool = fields.temperatureEnabled?.booleanValue ?? fields.fanControlEnabled?.booleanValue ?? true;
+    const humEnabledBool = fields.humidityEnabled?.booleanValue ?? fields.mistControlEnabled?.booleanValue ?? true;
+
+    // Check if normalization is needed:
+    const needsFanControlEnabled = !fields.fanControlEnabled || fields.fanControlEnabled.booleanValue !== tempEnabledBool;
+    const needsMistControlEnabled = !fields.mistControlEnabled || fields.mistControlEnabled.booleanValue !== humEnabledBool;
+    const needsMistMode = !fields.mistMode;
+    const tempOnNeedsDouble = !fields.temperatureOnC?.doubleValue;
+    const tempOffNeedsDouble = !fields.temperatureOffC?.doubleValue;
+    const humOnNeedsDouble = !fields.humidityOnRH?.doubleValue;
+    const humOffNeedsDouble = !fields.humidityOffRH?.doubleValue;
+
+    if (!needsFanControlEnabled && !needsMistControlEnabled && !needsMistMode && !tempOnNeedsDouble && !tempOffNeedsDouble && !humOnNeedsDouble && !humOffNeedsDouble) {
+      return false;
+    }
+
+    const tempOn = parseFloat(fields.temperatureOnC?.doubleValue ?? fields.temperatureOnC?.integerValue ?? '40.0');
+    const tempOff = parseFloat(fields.temperatureOffC?.doubleValue ?? fields.temperatureOffC?.integerValue ?? '38.0');
+    const humOn = parseFloat(fields.humidityOnRH?.doubleValue ?? fields.humidityOnRH?.integerValue ?? '45.0');
+    const humOff = parseFloat(fields.humidityOffRH?.doubleValue ?? fields.humidityOffRH?.integerValue ?? '60.0');
+    const fanMode = fields.fanMode?.stringValue || 'AUTO';
+    const mistMode = fields.mistMode?.stringValue || (humEnabledBool ? 'AUTO' : 'FORCE_OFF');
+
+    const patchUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/devices/${deviceId}/config/current?updateMask.fieldPaths=fanControlEnabled&updateMask.fieldPaths=mistControlEnabled&updateMask.fieldPaths=mistMode&updateMask.fieldPaths=fanMode&updateMask.fieldPaths=temperatureOnC&updateMask.fieldPaths=temperatureOffC&updateMask.fieldPaths=humidityOnRH&updateMask.fieldPaths=humidityOffRH&key=${apiKey}`;
+
+    const patchPayload = {
+      fields: {
+        fanControlEnabled: { booleanValue: tempEnabledBool },
+        mistControlEnabled: { booleanValue: humEnabledBool },
+        mistMode: { stringValue: mistMode },
+        fanMode: { stringValue: fanMode },
+        temperatureOnC: { doubleValue: tempOn },
+        temperatureOffC: { doubleValue: tempOff },
+        humidityOnRH: { doubleValue: humOn },
+        humidityOffRH: { doubleValue: humOff },
+      },
+    };
+
+    const patchRes = await fetch(patchUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patchPayload),
+    });
+
+    if (patchRes.ok) {
+      console.log(`[Backend Reconciler] Normalized firmware config for ${deviceId}:`);
+      console.log(`  - fanControlEnabled: ${tempEnabledBool}, mistControlEnabled: ${humEnabledBool}`);
+      console.log(`  - fanMode: ${fanMode}, mistMode: ${mistMode}`);
+      console.log(`  - temperatureOnC: ${tempOn}°C (doubleValue), temperatureOffC: ${tempOff}°C (doubleValue)`);
+      console.log(`  - humidityOnRH: ${humOn}% RH (doubleValue), humidityOffRH: ${humOff}% RH (doubleValue)`);
+      return true;
+    } else {
+      const errText = await patchRes.text();
+      console.warn(`[Backend Reconciler] Patch notice for ${deviceId}:`, errText);
+      return false;
+    }
+  } catch (err: any) {
+    console.warn(`[Backend Reconciler] Error during config reconciliation for ${deviceId}:`, err?.message || err);
+    return false;
+  }
+}
+
+function startConfigReconciler() {
+  const KNOWN_DEVICES = ['ESP32-FLORIFY-01', 'ESP32-CLIMATE-01', 'ESP32-CLIMATE-02', 'ESP32-CLIMATE-03'];
+
+  // Initial immediate run for all known devices
+  for (const id of KNOWN_DEVICES) {
+    reconcileDeviceConfigDoc(id).catch(() => {});
+  }
+
+  // Periodic reconciliation loop every 3.5 seconds
+  setInterval(async () => {
+    try {
+      for (const id of KNOWN_DEVICES) {
+        await reconcileDeviceConfigDoc(id);
+      }
+
+      // Discover any registered devices in Firestore
+      const { projectId, apiKey, firestoreDatabaseId } = getActiveFirebaseValues();
+      const listUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${firestoreDatabaseId}/documents/devices?key=${apiKey}&pageSize=50`;
+      const res = await fetch(listUrl);
+      if (res.ok) {
+        const data = await res.json() as any;
+        if (Array.isArray(data.documents)) {
+          for (const docItem of data.documents) {
+            const nameParts = (docItem.name || '').split('/');
+            const devId = nameParts[nameParts.length - 1];
+            if (devId && !KNOWN_DEVICES.includes(devId)) {
+              KNOWN_DEVICES.push(devId);
+              await reconcileDeviceConfigDoc(devId);
+            }
+          }
+        }
+      }
+    } catch {
+      // background polling notice ignored
+    }
+  }, 3500);
+}
+
+startConfigReconciler();
+
 const app = express();
 
 // Parse CLI --port if provided, or default to port 3000 (avoid colliding with container port 8080)
@@ -533,7 +686,7 @@ app.post('/api/admin/devices/:deviceId/rotate-credential', (req: Request, res: R
   res.status(200).json({ status: 'ROTATED', deviceId, newSecret });
 });
 
-app.put('/api/admin/devices/:deviceId/config', (req: Request, res: Response) => {
+app.put('/api/admin/devices/:deviceId/config', async (req: Request, res: Response) => {
   const { deviceId } = req.params;
   const { config, adminUid = 'admin' } = req.body;
   const current = serverDeviceConfigs[deviceId] || { version: 1 };
@@ -547,6 +700,10 @@ app.put('/api/admin/devices/:deviceId/config', (req: Request, res: Response) => 
   };
 
   logAdminAudit(adminUid, 'CONFIG_UPDATED', 'DEVICE_CONFIG', deviceId, `Updated configuration to v${nextVer}`);
+
+  // Trigger immediate Firestore config reconciliation
+  await reconcileDeviceConfigDoc(deviceId);
+
   res.status(200).json({ status: 'SAVED', version: nextVer });
 });
 
