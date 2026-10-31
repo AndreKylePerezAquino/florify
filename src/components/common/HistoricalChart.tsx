@@ -38,9 +38,6 @@ export const HistoricalChart: React.FC<HistoricalChartProps> = ({ readings, conf
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
         <div>
           <h4 className="text-sm font-bold text-[#2E1826]">Telemetry History & Fan Corroboration</h4>
-          <p className="text-xs text-[#826674]">
-            DHT11 sensor readings (°C & % RH) paired with fan relay actuation
-          </p>
         </div>
 
         {formattedData.length > 0 && (

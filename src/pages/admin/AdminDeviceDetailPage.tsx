@@ -147,9 +147,6 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                 isOnline={isDeviceConnected(device)}
               />
             </div>
-            <p className="text-xs font-mono text-[#826674]">
-              ID: {device.deviceId} {device.locationLabel && `· ${device.locationLabel}`}
-            </p>
           </div>
         </div>
 
@@ -356,7 +353,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
               <div>
                 <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
                   <Power className="h-4 w-4 text-[#C72C5E]" />
-                  Cooling OFF / ON Controls (TB6612FNG: GPIO 18/19/5)
+                  Cooling OFF / ON Controls
                 </h3>
                 <p className="text-xs text-[#826674]">
                   Operating mode:{' '}
@@ -414,7 +411,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
               <div>
                 <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
                   <Droplets className="h-4 w-4 text-sky-600" />
-                  Humidifier Override Controls (Dual Relays: GPIO 26 & 27)
+                  Humidifier Override Controls
                 </h3>
                 <p className="text-xs text-[#826674]">
                   Operating mode:{' '}
@@ -424,9 +421,6 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                       (Expires in {Math.max(0, Math.round((new Date(liveConfig.mistOverrideExpiresAt).getTime() - Date.now()) / 60000))} mins)
                     </span>
                   )}
-                  <span className="ml-2 text-[11px] text-slate-400 hidden sm:inline">
-                    (1 Click = ON, 2 Clicks = OFF)
-                  </span>
                 </p>
               </div>
 
@@ -453,7 +447,7 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                       : 'bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200'
                   }`}
                 >
-                  Humidifier ON (1 Click)
+                  Humidifier ON
                 </button>
                 <button
                   onClick={() => {
@@ -468,51 +462,9 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
                   }`}
                 >
-                  Humidifier OFF (2 Clicks)
+                  Humidifier OFF
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Row 2: Target Humidity Threshold Tuning */}
-        <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
-                <CloudRain className="h-4 w-4 text-sky-600" />
-                Humidity value% UP / DOWN (Target Threshold Tuning)
-              </h3>
-              <p className="text-xs text-[#826674]">
-                Target Threshold:{' '}
-                <strong className="text-sky-700">{liveConfig?.humidityOnRH || 75.0}% RH</strong>
-                <span className="ml-2 text-slate-500">(Auto Mode: {liveConfig?.mistMode || 'AUTO'})</span>
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={async () => {
-                  const currentHum = liveConfig?.humidityOnRH || 75.0;
-                  const newHum = Math.max(20, currentHum - 5);
-                  await updateConfig(device.deviceId, { humidityOnRH: newHum });
-                }}
-                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold cursor-pointer"
-                title="Decrease Target Humidity 5%"
-              >
-                Humidity -5% (DOWN)
-              </button>
-              <button
-                onClick={async () => {
-                  const currentHum = liveConfig?.humidityOnRH || 75.0;
-                  const newHum = Math.min(100, currentHum + 5);
-                  await updateConfig(device.deviceId, { humidityOnRH: newHum });
-                }}
-                className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-xs font-semibold cursor-pointer"
-                title="Increase Target Humidity 5%"
-              >
-                Humidity +5% (UP)
-              </button>
             </div>
           </div>
         </div>
