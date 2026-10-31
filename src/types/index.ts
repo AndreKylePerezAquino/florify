@@ -72,7 +72,57 @@ export interface DeviceConfig {
   updatedAt: string;
   updatedBy?: string;
   version: number;
+  flowerPreset?: string;
 }
+
+export type FlowerPresetType =
+  | 'Phalaenopsis Orchid'
+  | 'Vanda Orchid'
+  | 'Anthurium'
+  | 'Rose'
+  | 'General Flower'
+  | 'Custom'
+  | (string & {});
+
+export interface FlowerPresetValues {
+  tempOn: number;
+  tempOff: number;
+  humOn: number;
+  humOff: number;
+}
+
+export const FLOWER_PRESETS: Record<Exclude<FlowerPresetType, 'Custom'>, FlowerPresetValues> = {
+  'Phalaenopsis Orchid': {
+    tempOn: 28.0,
+    tempOff: 26.0,
+    humOn: 45.0,
+    humOff: 60.0,
+  },
+  'Vanda Orchid': {
+    tempOn: 30.0,
+    tempOff: 28.0,
+    humOn: 60.0,
+    humOff: 75.0,
+  },
+  'Anthurium': {
+    tempOn: 28.0,
+    tempOff: 26.0,
+    humOn: 60.0,
+    humOff: 75.0,
+  },
+  'Rose': {
+    tempOn: 25.0,
+    tempOff: 23.0,
+    humOn: 40.0,
+    humOff: 55.0,
+  },
+  'General Flower': {
+    tempOn: 28.0,
+    tempOff: 26.0,
+    humOn: 45.0,
+    humOff: 60.0,
+  },
+};
 
 export interface DeviceReading {
   id?: string;

@@ -15,21 +15,19 @@ import {
   ArrowRight,
   RefreshCw,
   X,
+  Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { isDeviceConnected } from '../../lib/deviceStatus';
+import { FlowerPresetType, FLOWER_PRESETS } from '../../types';
 
 interface AdminSettingsPageProps {
   navigate: (path: string) => void;
 }
 
 export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }) => {
-  const { devices, deviceConfigs, allUsers, registerDevice, updateEsp32Control } = useApp();
-
-  // Manual ESP32 command state
-  const [selectedManualDeviceId, setSelectedManualDeviceId] = useState<string>('ESP32-FLORIFY-01');
-  const [manualSending, setManualSending] = useState<boolean>(false);
-  const [manualFeedback, setManualFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const { devices, allUsers, registerDevice, customPresets, addCustomPreset, removeCustomPreset } = useApp();
 
   // Local state for admin configuration & map/automation settings (persisted to localStorage)
   const [fleetName, setFleetName] = useState<string>('Florify Fleet Intelligence');
@@ -41,12 +39,95 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
   const [showDriverMarkers, setShowDriverMarkers] = useState<boolean>(true);
 
   // Automation defaults
+  const [defaultFlowerPreset, setDefaultFlowerPreset] = useState<FlowerPresetType>('Custom');
   const [defaultTempOn, setDefaultTempOn] = useState<number>(40.0);
   const [defaultTempOff, setDefaultTempOff] = useState<number>(38.0);
   const [defaultHumOn, setDefaultHumOn] = useState<number>(75.0);
   const [defaultHumOff, setDefaultHumOff] = useState<number>(65.0);
   const [defaultDhtInterval, setDefaultDhtInterval] = useState<number>(5);
   const [defaultActivationMode, setDefaultActivationMode] = useState<'ANY' | 'ALL'>('ANY');
+
+  // Custom preset creation modal/panel state
+  const [isAddingPreset, setIsAddingPreset] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [presetAddError, setPresetAddError] = useState<string | null>(null);
+  const [presetTempOn, setPresetTempOn] = useState<number>(defaultTempOn);
+  const [presetTempOff, setPresetTempOff] = useState<number>(defaultTempOff);
+  const [presetHumOn, setPresetHumOn] = useState<number>(defaultHumOn);
+  const [presetHumOff, setPresetHumOff] = useState<number>(defaultHumOff);
+
+  const handleOpenAddPreset = () => {
+    setNewPresetName('');
+    setPresetTempOn(defaultTempOn);
+    setPresetTempOff(defaultTempOff);
+    setPresetHumOn(defaultHumOn);
+    setPresetHumOff(defaultHumOff);
+    setPresetAddError(null);
+    setIsAddingPreset(true);
+  };
+
+  const handleDefaultPresetChange = (preset: FlowerPresetType) => {
+    setDefaultFlowerPreset(preset);
+    if (preset === 'Custom') return;
+
+    if (FLOWER_PRESETS[preset as keyof typeof FLOWER_PRESETS]) {
+      const p = FLOWER_PRESETS[preset as keyof typeof FLOWER_PRESETS];
+      setDefaultTempOn(p.tempOn);
+      setDefaultTempOff(p.tempOff);
+      setDefaultHumOn(p.humOn);
+      setDefaultHumOff(p.humOff);
+    } else if (customPresets[preset]) {
+      const p = customPresets[preset];
+      setDefaultTempOn(p.tempOn);
+      setDefaultTempOff(p.tempOff);
+      setDefaultHumOn(p.humOn);
+      setDefaultHumOff(p.humOff);
+    }
+  };
+
+  const handleSaveNewPreset = (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newPresetName.trim();
+    if (!name) {
+      setPresetAddError('Please enter a preset name.');
+      return;
+    }
+    if (name.toLowerCase() === 'custom' || FLOWER_PRESETS[name as keyof typeof FLOWER_PRESETS]) {
+      setPresetAddError('A built-in preset already uses this name. Please choose a unique name.');
+      return;
+    }
+    if (isNaN(presetTempOn) || isNaN(presetTempOff) || isNaN(presetHumOn) || isNaN(presetHumOff)) {
+      setPresetAddError('Please ensure all 4 thresholds have valid numerical values before saving.');
+      return;
+    }
+    if (presetTempOff >= presetTempOn) {
+      setPresetAddError(`Fan OFF threshold (${presetTempOff}°C) must be lower than Fan ON threshold (${presetTempOn}°C).`);
+      return;
+    }
+    if (presetHumOn === presetHumOff) {
+      setPresetAddError('Humidifier ON and OFF thresholds must be distinct.');
+      return;
+    }
+    if (presetHumOn < 0 || presetHumOn > 100 || presetHumOff < 0 || presetHumOff > 100) {
+      setPresetAddError('Humidifier thresholds must be between 0% and 100% RH.');
+      return;
+    }
+
+    addCustomPreset(name, {
+      tempOn: presetTempOn,
+      tempOff: presetTempOff,
+      humOn: presetHumOn,
+      humOff: presetHumOff,
+    });
+    setDefaultTempOn(presetTempOn);
+    setDefaultTempOff(presetTempOff);
+    setDefaultHumOn(presetHumOn);
+    setDefaultHumOff(presetHumOff);
+    setDefaultFlowerPreset(name);
+    setNewPresetName('');
+    setPresetAddError(null);
+    setIsAddingPreset(false);
+  };
 
   const [saving, setSaving] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -116,6 +197,7 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
         if (parsed.autoCenter !== undefined) setAutoCenter(parsed.autoCenter);
         if (parsed.autoFitBounds !== undefined) setAutoFitBounds(parsed.autoFitBounds);
         if (parsed.showDriverMarkers !== undefined) setShowDriverMarkers(parsed.showDriverMarkers);
+        if (parsed.defaultFlowerPreset) setDefaultFlowerPreset(parsed.defaultFlowerPreset);
         if (parsed.defaultTempOn) setDefaultTempOn(parsed.defaultTempOn);
         if (parsed.defaultTempOff) setDefaultTempOff(parsed.defaultTempOff);
         if (parsed.defaultHumOn) setDefaultHumOn(parsed.defaultHumOn);
@@ -141,6 +223,7 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
       autoCenter,
       autoFitBounds,
       showDriverMarkers,
+      defaultFlowerPreset,
       defaultTempOn,
       defaultTempOff,
       defaultHumOn,
@@ -211,7 +294,7 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
               <MapPin className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-[#2E1826]">SECTION 1: General Settings and Map Settings</h2>
+              <h2 className="text-base font-bold text-[#2E1826]">General Settings and Map Settings</h2>
             </div>
           </div>
 
@@ -224,19 +307,6 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
                 onChange={(e) => setFleetName(e.target.value)}
                 className="w-full bg-[#FFF7F9]/40 border border-[#FDC3D1] rounded-xl px-3 py-2 text-xs text-[#2E1826] focus:outline-none focus:border-[#FF5C89]"
               />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#2E1826] mb-1.5">Map Tile Layer Provider</label>
-              <select
-                value={mapTileLayer}
-                onChange={(e) => setMapTileLayer(e.target.value)}
-                className="w-full bg-[#FFF7F9]/40 border border-[#FDC3D1] rounded-xl px-3 py-2 text-xs text-[#2E1826] focus:outline-none focus:border-[#FF5C89]"
-              >
-                <option value="Carto Voyager">CartoDB Voyager (High Detail)</option>
-                <option value="OpenStreetMap">OpenStreetMap Standard</option>
-                <option value="Carto Dark">CartoDB Dark Mode</option>
-              </select>
             </div>
 
             <div>
@@ -313,7 +383,7 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
               <UserCheck className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-[#2E1826]">SECTION 2: Registration Management</h2>
+              <h2 className="text-base font-bold text-[#2E1826]">Registration Management</h2>
             </div>
           </div>
 
@@ -395,8 +465,195 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
               <Sliders className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-[#2E1826]">SECTION 3: Automation Settings</h2>
+              <h2 className="text-base font-bold text-[#2E1826]">Automation Settings</h2>
             </div>
+          </div>
+
+          {/* Flower Climate Preset */}
+          <div className="bg-[#FFF7F9]/50 p-4 rounded-xl border border-[#FDC3D1] space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-[#C72C5E]" />
+                <h3 className="text-xs font-bold text-[#2E1826]">Flower Climate Preset</h3>
+              </div>
+              {defaultFlowerPreset !== 'Custom' && (
+                <span className="text-[11px] font-semibold text-[#C72C5E] bg-white px-2 py-0.5 rounded-md border border-[#FDC3D1]">
+                  {defaultFlowerPreset} Active
+                </span>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-medium text-[#826674]">
+                  Select Preset
+                </label>
+                <div className="flex items-center gap-2">
+                  {customPresets[defaultFlowerPreset] && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        removeCustomPreset(defaultFlowerPreset);
+                        setDefaultFlowerPreset('Custom');
+                      }}
+                      className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200 flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Delete this custom preset"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Delete Preset
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleOpenAddPreset}
+                    className="text-xs font-semibold text-[#C72C5E] hover:text-[#FF5C89] hover:bg-white px-2.5 py-0.5 rounded-md border border-[#FDC3D1] flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Name & Add Preset</span>
+                  </button>
+                </div>
+              </div>
+
+              <select
+                value={defaultFlowerPreset}
+                onChange={(e) => handleDefaultPresetChange(e.target.value as FlowerPresetType)}
+                className="w-full bg-white border border-[#FDC3D1] rounded-xl px-3 py-2 text-xs text-[#2E1826] focus:outline-none focus:border-[#FF5C89] cursor-pointer"
+              >
+                <optgroup label="Standard Botanical Presets">
+                  <option value="Phalaenopsis Orchid">Phalaenopsis Orchid (Fan: 28°C / 26°C · Humidifier: 45% / 60% RH)</option>
+                  <option value="Vanda Orchid">Vanda Orchid (Fan: 30°C / 28°C · Humidifier: 60% / 75% RH)</option>
+                  <option value="Anthurium">Anthurium (Fan: 28°C / 26°C · Humidifier: 60% / 75% RH)</option>
+                  <option value="Rose">Rose (Fan: 25°C / 23°C · Humidifier: 40% / 55% RH)</option>
+                  <option value="General Flower">General Flower (Fan: 28°C / 26°C · Humidifier: 45% / 60% RH)</option>
+                </optgroup>
+                {Object.keys(customPresets).length > 0 && (
+                  <optgroup label="Custom Saved Presets">
+                    {Object.entries(customPresets).map(([name, p]) => (
+                      <option key={name} value={name}>
+                        {name} (Fan: {p.tempOn}°C / {p.tempOff}°C · Humidifier: {p.humOn}% / {p.humOff}% RH)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Manual">
+                  <option value="Custom">Custom (Manual threshold configuration)</option>
+                </optgroup>
+              </select>
+            </div>
+
+            {/* Inline Name & Add Preset Panel */}
+            {isAddingPreset && (
+              <div className="p-4 rounded-xl border border-[#FDC3D1] bg-white space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-[#2E1826] flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-[#C72C5E]" />
+                    Name & Save Custom Preset
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingPreset(false);
+                      setPresetAddError(null);
+                    }}
+                    className="text-[#826674] hover:text-[#2E1826] cursor-pointer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {presetAddError && (
+                  <div className="p-2 text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg">
+                    {presetAddError}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#2E1826] mb-1">
+                    Preset Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Dutch Hydrangea, Carnation, Tulip"
+                    value={newPresetName}
+                    onChange={(e) => {
+                      setNewPresetName(e.target.value);
+                      setPresetAddError(null);
+                    }}
+                    className="w-full bg-[#FFF7F9]/40 border border-[#FDC3D1] rounded-lg px-3 py-1.5 text-xs text-[#2E1826] focus:outline-none focus:border-[#FF5C89]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-[#FFF7F9]/40 p-3 rounded-lg border border-[#FDC3D1]/70">
+                  <div>
+                    <label className="text-[10px] font-semibold text-[#826674] block mb-1">Fan ON (°C)</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={isNaN(presetTempOn) ? '' : presetTempOn}
+                      onChange={(e) => setPresetTempOn(parseFloat(e.target.value))}
+                      className="w-full bg-white border border-[#FDC3D1] rounded-md px-2 py-1 text-xs font-mono font-bold text-[#2E1826] focus:outline-none focus:border-[#FF5C89]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold text-[#826674] block mb-1">Fan OFF (°C)</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={isNaN(presetTempOff) ? '' : presetTempOff}
+                      onChange={(e) => setPresetTempOff(parseFloat(e.target.value))}
+                      className="w-full bg-white border border-[#FDC3D1] rounded-md px-2 py-1 text-xs font-mono font-bold text-[#2E1826] focus:outline-none focus:border-[#FF5C89]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold text-[#826674] block mb-1">Humidifier ON (% RH)</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      max="100"
+                      value={isNaN(presetHumOn) ? '' : presetHumOn}
+                      onChange={(e) => setPresetHumOn(parseFloat(e.target.value))}
+                      className="w-full bg-white border border-[#FDC3D1] rounded-md px-2 py-1 text-xs font-mono font-bold text-[#2E1826] focus:outline-none focus:border-[#FF5C89]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold text-[#826674] block mb-1">Humidifier OFF (% RH)</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      max="100"
+                      value={isNaN(presetHumOff) ? '' : presetHumOff}
+                      onChange={(e) => setPresetHumOff(parseFloat(e.target.value))}
+                      className="w-full bg-white border border-[#FDC3D1] rounded-md px-2 py-1 text-xs font-mono font-bold text-[#2E1826] focus:outline-none focus:border-[#FF5C89]"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-[#826674]">
+                  You can fine-tune these Fan and Humidifier thresholds directly before saving this preset.
+                </p>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingPreset(false);
+                      setPresetAddError(null);
+                    }}
+                    className="px-3 py-1.5 text-xs font-semibold text-[#826674] hover:bg-[#FFF7F9] rounded-lg cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveNewPreset}
+                    className="px-3.5 py-1.5 bg-[#FF5C89] hover:bg-[#C72C5E] text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
+                  >
+                    Save Preset
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -414,7 +671,10 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
                     type="number"
                     step="0.5"
                     value={defaultTempOn}
-                    onChange={(e) => setDefaultTempOn(Number(e.target.value))}
+                    onChange={(e) => {
+                      setDefaultTempOn(Number(e.target.value));
+                      setDefaultFlowerPreset('Custom');
+                    }}
                     className="w-full bg-white border border-[#FDC3D1] rounded-xl px-3 py-1.5 text-xs text-[#2E1826] font-mono"
                   />
                 </div>
@@ -424,7 +684,10 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
                     type="number"
                     step="0.5"
                     value={defaultTempOff}
-                    onChange={(e) => setDefaultTempOff(Number(e.target.value))}
+                    onChange={(e) => {
+                      setDefaultTempOff(Number(e.target.value));
+                      setDefaultFlowerPreset('Custom');
+                    }}
                     className="w-full bg-white border border-[#FDC3D1] rounded-xl px-3 py-1.5 text-xs text-[#2E1826] font-mono"
                   />
                 </div>
@@ -440,22 +703,28 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-medium text-[#826674] mb-1">Mist ON Threshold</label>
+                  <label className="block text-[11px] font-medium text-[#826674] mb-1">Humidifier ON Threshold</label>
                   <input
                     type="number"
                     step="0.5"
                     value={defaultHumOn}
-                    onChange={(e) => setDefaultHumOn(Number(e.target.value))}
+                    onChange={(e) => {
+                      setDefaultHumOn(Number(e.target.value));
+                      setDefaultFlowerPreset('Custom');
+                    }}
                     className="w-full bg-white border border-[#FDC3D1] rounded-xl px-3 py-1.5 text-xs text-[#2E1826] font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-[#826674] mb-1">Mist OFF Threshold</label>
+                  <label className="block text-[11px] font-medium text-[#826674] mb-1">Humidifier OFF Threshold</label>
                   <input
                     type="number"
                     step="0.5"
                     value={defaultHumOff}
-                    onChange={(e) => setDefaultHumOff(Number(e.target.value))}
+                    onChange={(e) => {
+                      setDefaultHumOff(Number(e.target.value));
+                      setDefaultFlowerPreset('Custom');
+                    }}
                     className="w-full bg-white border border-[#FDC3D1] rounded-xl px-3 py-1.5 text-xs text-[#2E1826] font-mono"
                   />
                 </div>
@@ -488,228 +757,6 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ navigate }
               </select>
             </div>
           </div>
-        </section>
-
-        {/* SECTION 4: ESP32 Relay Manual Control via Firebase Cloud Sync */}
-        <section className="bg-white rounded-2xl border border-[#FDC3D1] p-6 shadow-xs space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#FDC3D1]">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-[#FFF7F9] text-[#C72C5E] border border-[#FDC3D1]">
-                <Cpu className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-[#2E1826]">SECTION 4: ESP32 Relay Actuator Controls</h2>
-                <p className="text-xs text-[#7B5B6E]">
-                  Commands are synchronized in real-time to Firebase Firestore (<code className="text-[#C72C5E]">/devices/{'{id}'}/config/current</code>).
-                </p>
-              </div>
-            </div>
-
-            {/* Target Device Selector */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-[#7B5B6E]">Target Device:</span>
-              <select
-                value={selectedManualDeviceId}
-                onChange={(e) => {
-                  setSelectedManualDeviceId(e.target.value);
-                  setManualFeedback(null);
-                }}
-                className="text-xs font-bold px-3 py-1.5 rounded-lg border border-[#FDC3D1] bg-[#FFF7F9] text-[#2E1826] focus:outline-none focus:ring-1 focus:ring-[#FF5C89]"
-              >
-                {devices.length > 0 ? (
-                  devices.map((d) => {
-                    const id = d.deviceId || (d as any).id;
-                    return (
-                      <option key={id} value={id}>
-                        {d.displayName || id} ({id})
-                      </option>
-                    );
-                  })
-                ) : (
-                  <option value="ESP32-FLORIFY-01">ESP32-FLORIFY-01 (Default)</option>
-                )}
-              </select>
-            </div>
-          </div>
-
-          {/* Current Cloud Synced Status */}
-          {(() => {
-            const devConf = deviceConfigs[selectedManualDeviceId] || {};
-            const currentFanMode = devConf.fanMode || 'AUTO';
-            const currentMistMode = devConf.mistMode || 'FORCE_OFF';
-
-            const handleSend = async (
-              fanAction: 'ON' | 'OFF' | 'AUTO' | 'UNCHANGED',
-              humAction: 'ON' | 'OFF' | 'AUTO' | 'UNCHANGED',
-              label: string
-            ) => {
-              setManualSending(true);
-              setManualFeedback(null);
-              try {
-                await updateEsp32Control(fanAction, humAction, selectedManualDeviceId);
-                setManualFeedback({
-                  type: 'success',
-                  message: `Command "${label}" successfully published to Firestore for ${selectedManualDeviceId}! The ESP32 will execute it on its sync cycle.`,
-                });
-              } catch (err: any) {
-                setManualFeedback({
-                  type: 'error',
-                  message: `Failed to send command: ${err?.message || 'Firestore error'}`,
-                });
-              } finally {
-                setManualSending(false);
-              }
-            };
-
-            return (
-              <div className="space-y-4">
-                {manualFeedback && (
-                  <div
-                    className={`p-3 rounded-xl text-xs flex items-center justify-between gap-2 border ${
-                      manualFeedback.type === 'success'
-                        ? 'bg-[#EBF7EE] text-[#1E7E34] border-[#C3E6CB]'
-                        : 'bg-[#FDF2F4] text-[#C72C5E] border-[#FDC3D1]'
-                    }`}
-                  >
-                    <span>{manualFeedback.message}</span>
-                    <button
-                      type="button"
-                      onClick={() => setManualFeedback(null)}
-                      className="text-xs font-bold hover:opacity-70"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Channel 1: Cooling Fan (GPIO 18) */}
-                  <div className="p-4 rounded-xl border border-[#FDC3D1] bg-[#FFF7F9] space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Thermometer className="h-4 w-4 text-[#C72C5E]" />
-                        <span className="text-xs font-bold text-[#2E1826]">Channel 1: Cooling Fan (GPIO 18)</span>
-                      </div>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                          currentFanMode === 'FORCE_ON'
-                            ? 'bg-[#EBF7EE] text-[#1E7E34]'
-                            : currentFanMode === 'FORCE_OFF'
-                            ? 'bg-gray-200 text-gray-700'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}
-                      >
-                        Mode: {currentFanMode}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[#7B5B6E]">
-                      Continuously energizes relay coil for cooling fan.
-                    </p>
-                    <div className="grid grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        disabled={manualSending}
-                        onClick={() => handleSend('ON', 'UNCHANGED', 'Fan FORCE_ON')}
-                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
-                          currentFanMode === 'FORCE_ON'
-                            ? 'bg-green-600 text-white shadow-xs'
-                            : 'bg-white border border-[#FDC3D1] hover:bg-[#EBF7EE] text-[#1E7E34]'
-                        }`}
-                      >
-                        Fan ON
-                      </button>
-                      <button
-                        type="button"
-                        disabled={manualSending}
-                        onClick={() => handleSend('OFF', 'UNCHANGED', 'Fan FORCE_OFF')}
-                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
-                          currentFanMode === 'FORCE_OFF'
-                            ? 'bg-rose-600 text-white shadow-xs'
-                            : 'bg-white border border-[#FDC3D1] hover:bg-rose-50 text-rose-700'
-                        }`}
-                      >
-                        Fan OFF
-                      </button>
-                      <button
-                        type="button"
-                        disabled={manualSending}
-                        onClick={() => handleSend('AUTO', 'UNCHANGED', 'Fan AUTO Hysteresis')}
-                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
-                          currentFanMode === 'AUTO'
-                            ? 'bg-[#FF5C89] text-white shadow-xs'
-                            : 'bg-white border border-[#FDC3D1] hover:bg-[#FFF7F9] text-[#7B5B6E]'
-                        }`}
-                      >
-                        Auto (40°C)
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Channel 2: Humidifier (GPIO 19) */}
-                  <div className="p-4 rounded-xl border border-[#FDC3D1] bg-[#FFF7F9] space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Droplets className="h-4 w-4 text-blue-500" />
-                        <span className="text-xs font-bold text-[#2E1826]">Channel 2: Humidifier (GPIO 19)</span>
-                      </div>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                          currentMistMode === 'FORCE_ON'
-                            ? 'bg-[#EBF7EE] text-[#1E7E34]'
-                            : currentMistMode === 'FORCE_OFF'
-                            ? 'bg-gray-200 text-gray-700'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}
-                      >
-                        Mode: {currentMistMode}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[#7B5B6E]">
-                      Simulates momentary clicks: 1 click to turn ON, 2 clicks (300ms apart) to turn OFF.
-                    </p>
-                    <div className="grid grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        disabled={manualSending}
-                        onClick={() => handleSend('UNCHANGED', 'ON', 'Humidifier 1-Click ON')}
-                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
-                          currentMistMode === 'FORCE_ON'
-                            ? 'bg-blue-600 text-white shadow-xs'
-                            : 'bg-white border border-[#FDC3D1] hover:bg-blue-50 text-blue-700'
-                        }`}
-                      >
-                        1 Click ON
-                      </button>
-                      <button
-                        type="button"
-                        disabled={manualSending}
-                        onClick={() => handleSend('UNCHANGED', 'OFF', 'Humidifier 2-Click OFF')}
-                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
-                          currentMistMode === 'FORCE_OFF'
-                            ? 'bg-gray-700 text-white shadow-xs'
-                            : 'bg-white border border-[#FDC3D1] hover:bg-gray-100 text-gray-700'
-                        }`}
-                      >
-                        2 Click OFF
-                      </button>
-                      <button
-                        type="button"
-                        disabled={manualSending}
-                        onClick={() => handleSend('UNCHANGED', 'AUTO', 'Humidifier AUTO')}
-                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
-                          currentMistMode === 'AUTO'
-                            ? 'bg-[#FF5C89] text-white shadow-xs'
-                            : 'bg-white border border-[#FDC3D1] hover:bg-[#FFF7F9] text-[#7B5B6E]'
-                        }`}
-                      >
-                        Auto (RH)
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
         </section>
 
         {/* Bottom Save Action */}

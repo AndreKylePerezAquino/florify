@@ -52,11 +52,14 @@ export function validateDeviceConfig(config: Partial<DeviceConfig>): { valid: bo
     if (
       typeof config.humidityOnRH === 'number' &&
       typeof config.humidityOffRH === 'number' &&
-      config.humidityOffRH >= config.humidityOnRH
+      config.humidityOnRH === config.humidityOffRH
     ) {
-      errors.push(`Humidity OFF threshold (${config.humidityOffRH}%) must be lower than ON threshold (${config.humidityOnRH}%) to prevent rapid relay cycling.`);
+      errors.push('Humidity ON and OFF thresholds must be distinct to prevent rapid cycling.');
     }
-    if (config.humidityOnRH! < 0 || config.humidityOnRH! > 100 || config.humidityOffRH! < 0 || config.humidityOffRH! > 100) {
+    if (
+      (typeof config.humidityOnRH === 'number' && (config.humidityOnRH < 0 || config.humidityOnRH > 100)) ||
+      (typeof config.humidityOffRH === 'number' && (config.humidityOffRH < 0 || config.humidityOffRH > 100))
+    ) {
       errors.push('Humidity thresholds must be within 0% to 100% RH.');
     }
   }

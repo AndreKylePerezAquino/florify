@@ -34,6 +34,7 @@ import {
   Alert,
   AuditLog,
   DriverLocation,
+  FlowerPresetValues,
 } from '../types';
 
 interface AppContextType {
@@ -50,6 +51,9 @@ interface AppContextType {
   pendingUsersCount: number;
   activeAlertsCount: number;
   devicesWithFansOnCount: number;
+  customPresets: Record<string, FlowerPresetValues>;
+  addCustomPreset: (name: string, values: FlowerPresetValues) => void;
+  removeCustomPreset: (name: string) => void;
   loginWithEmail: (email: string, password: string) => Promise<void>;
   signupWithEmail: (
     email: string,
@@ -130,6 +134,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+
+  // User-defined custom flower climate presets (persisted in localStorage)
+  const [customPresets, setCustomPresets] = useState<Record<string, FlowerPresetValues>>(() => {
+    try {
+      const saved = localStorage.getItem('florify_custom_flower_presets');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const addCustomPreset = (name: string, values: FlowerPresetValues) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setCustomPresets((prev) => {
+      const updated = { ...prev, [trimmed]: values };
+      try {
+        localStorage.setItem('florify_custom_flower_presets', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Failed saving custom preset:', e);
+      }
+      return updated;
+    });
+  };
+
+  const removeCustomPreset = (name: string) => {
+    setCustomPresets((prev) => {
+      const updated = { ...prev };
+      delete updated[name];
+      try {
+        localStorage.setItem('florify_custom_flower_presets', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Failed removing custom preset:', e);
+      }
+      return updated;
+    });
+  };
 
   // Check if system administrator has already been claimed
   const checkAdminClaimed = async (): Promise<boolean> => {
@@ -739,6 +780,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (partialConfig.mistOverrideReason !== undefined) {
       updated.mistOverrideReason = partialConfig.mistOverrideReason;
     }
+    if (partialConfig.flowerPreset !== undefined) {
+      updated.flowerPreset = partialConfig.flowerPreset;
+    }
 
     try {
       await setDoc(configRef, cleanFirestoreData(updated));
@@ -1026,6 +1070,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         pendingUsersCount,
         activeAlertsCount,
         devicesWithFansOnCount,
+        customPresets,
+        addCustomPreset,
+        removeCustomPreset,
         loginWithEmail,
         signupWithEmail,
         resetPassword,
