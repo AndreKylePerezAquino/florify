@@ -214,8 +214,6 @@ export const AdminDeviceSettingsPage: React.FC<AdminDeviceSettingsPageProps> = (
     );
   }
 
-  const isSync = device.reportedConfigVersion === currentConfig.version;
-
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Header */}
@@ -242,26 +240,6 @@ export const AdminDeviceSettingsPage: React.FC<AdminDeviceSettingsPageProps> = (
             Unsaved Changes
           </span>
         )}
-      </div>
-
-      {/* Sync Status Alert Banner */}
-      <div className="p-4 rounded-xl bg-white border border-[#FDC3D1] shadow-xs flex items-center justify-between text-xs">
-        <div className="space-y-0.5">
-          <span className="font-semibold text-[#2E1826]">Configuration Sync Status:</span>
-          <p className="text-[#826674]">
-            Target Revision: <strong className="font-mono">v{currentConfig.version}</strong> · Device Acknowledged:{' '}
-            <strong className="font-mono">v{device.reportedConfigVersion}</strong>
-          </p>
-        </div>
-        <span
-          className={`font-semibold font-mono px-2.5 py-1 rounded-md text-xs ${
-            isSync
-              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-              : 'bg-amber-50 text-amber-800 border border-amber-200'
-          }`}
-        >
-          {isSync ? 'Synchronized' : 'Pending Device Fetch'}
-        </span>
       </div>
 
       {/* Form */}
@@ -643,14 +621,14 @@ export const AdminDeviceSettingsPage: React.FC<AdminDeviceSettingsPageProps> = (
           </div>
         </div>
 
-        {/* DHT11 Read Interval Card */}
+        {/* Sensor Read Interval Card */}
         <div className="bg-white rounded-xl border border-[#FDC3D1] p-5 shadow-xs space-y-3">
           <h3 className="text-sm font-bold text-[#2E1826] flex items-center gap-2">
             <Settings className="h-4 w-4 text-[#C72C5E]" />
-            DHT11 Sensor Read Interval (Telemetry Polling)
+            Sensor Read Interval
           </h3>
           <p className="text-xs text-[#826674]">
-            Configure how frequently the ESP32 samples and reports DHT11 temperature and humidity telemetry to the web backend:
+            Configure how frequently the ESP32 samples and reports temperature and humidity telemetry to the web backend:
           </p>
           <div className="max-w-xs">
             <select

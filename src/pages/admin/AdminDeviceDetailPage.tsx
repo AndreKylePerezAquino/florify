@@ -183,7 +183,6 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                 <Thermometer className="h-3.5 w-3.5 text-[#C72C5E]" />
                 Cabin Temperature
               </span>
-              <span className="text-[10px] uppercase font-mono">{device.sensorType || 'DHT11'}</span>
             </div>
             <div className="mt-2 flex items-baseline gap-1">
               <span className="text-3xl font-bold font-mono tabular-nums text-[#2E1826] transition-all">
@@ -215,7 +214,6 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                 <Droplets className="h-3.5 w-3.5 text-[#FB8CAC]" />
                 Relative Humidity
               </span>
-              <span className="text-[10px] uppercase font-mono">{device.sensorType || 'DHT11'}</span>
             </div>
             <div className="mt-2 flex items-baseline gap-1">
               <span className="text-3xl font-bold font-mono tabular-nums text-[#2E1826] transition-all">
@@ -253,7 +251,6 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                 </div>
                 Cooling Channel
               </span>
-              <span className="text-[10px] font-mono text-emerald-700 font-semibold">GPIO 26</span>
             </div>
             <div className="mt-2 flex items-baseline gap-2">
               <span
@@ -294,7 +291,6 @@ export const AdminDeviceDetailPage: React.FC<AdminDeviceDetailPageProps> = ({ de
                 </div>
                 Humidity Channel
               </span>
-              <span className="text-[10px] font-mono text-sky-700 font-semibold">GPIO 27</span>
             </div>
             <div className="mt-2 flex items-baseline gap-2">
               <span

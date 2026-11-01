@@ -77,7 +77,7 @@ export const HistoricalChart: React.FC<HistoricalChartProps> = ({ readings, conf
         <div className="h-48 flex flex-col items-center justify-center text-center p-6 bg-[#FFF7F9]/30 rounded-lg border border-dashed border-[#FDC3D1] space-y-1.5">
           <p className="text-xs font-semibold text-[#2E1826]">No Historical Telemetry Recorded</p>
           <p className="text-[11px] text-[#826674] max-w-sm">
-            Once this ESP32 connects to Wi-Fi and begins sampling the onboard DHT11 sensor, time-series temperature and humidity curves will populate here automatically.
+            Once this ESP32 connects to Wi-Fi and begins sampling the onboard sensor, time-series temperature and humidity curves will populate here automatically.
           </p>
         </div>
       ) : (
