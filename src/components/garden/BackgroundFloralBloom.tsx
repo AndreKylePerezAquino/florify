@@ -129,12 +129,17 @@ const FRAGMENT_SHADER = `
     color *= flower_back_mask;
     color *= flower_front_mask;
 
+    // Replace yellow accents with exact hex #FDA4BA (0.992157, 0.643137, 0.729412)
+    vec3 hex_fda4ba = vec3(0.992157, 0.643137, 0.729412); // #FDA4BA
+    vec3 flower_back_color = mix(flower_color, hex_fda4ba, clamp(u_stop_time, 0.0, 1.0));
+
     color += (stem_shape * stem_color);
-    color += (flower_back_shape * (flower_color + vec3(0., .6 * u_stop_time, 0.)));
+    color += (flower_back_shape * flower_back_color);
     color += (flower_front_shape * flower_color);
 
-    color.r *= 1. - (.4 * flower_back_shape * flower_front_shape);
-    color.b *= 1. - (flower_back_shape * flower_front_shape);
+    // Replace previous yellow center overlap with #FDA4BA
+    float flower_center = flower_back_shape * flower_front_shape;
+    color = mix(color, hex_fda4ba, flower_center * 0.85);
 
     float new_coverage = clamp(stem_shape + flower_back_shape + flower_front_shape, 0.0, 1.0);
     float combined_alpha = clamp(base.w * stem_mask * flower_back_mask * flower_front_mask + new_coverage, 0.0, 1.0);
@@ -191,6 +196,7 @@ export const BackgroundFloralBloom: React.FC = () => {
   const spawnPetals = useCallback((clientX: number, clientY: number) => {
     const colors = [
       '#FF5C89', // Coral Blossom
+      '#FDA4BA', // Rose Blossom (#FDA4BA)
       '#FFA4BD', // Soft Sakura Pink
       '#C72C5E', // Deep Peony Rose
       '#FFE0E9', // Pale Petal Pink

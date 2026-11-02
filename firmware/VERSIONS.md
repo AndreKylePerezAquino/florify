@@ -4,7 +4,23 @@ This document maintains the official version history of ESP32 firmware variants 
 
 ---
 
-## ESP32 ver 4.2: Hybrid TB6612FNG Driver (Fan) + 2-Channel Relay (Dual Humidifiers) (`esp32_florify_jmd096_dual_relay.ino` & `esp32_relay_controller.ino`)
+## ESP32 ver 4.4: Tested Fan & Relay Logic (`esp32_florify_jmd096_dual_relay.ino` & `esp32_relay_controller.ino`)
+- **Release Version**: `v4.4.0-fan-relay-tested-logic`
+- **Hardware Architecture**:
+  - **TB6612FNG Fan Driver (Channel A)**:
+    - `TB_AIN1_PIN`: **GPIO 13** (Direction: HIGH for forward)
+    - `TB_PWMA_PIN`: **GPIO 26** (PWM fan speed: 255)
+    - `TB_STBY_PIN`: **GPIO 33** (HIGH = active)
+    - `AIN2`: Hardwired to GND on the module board
+  - **2-Channel Relay Module (Dual Humidifiers Tactile Button Simulator)**:
+    - `RELAY_HUM1_PIN`: **GPIO 25** (Moved from GPIO 26 to free PWM pin)
+    - `RELAY_HUM2_PIN`: **GPIO 27**
+    - Active Trigger Logic: `RELAY_ACTIVE_LEVEL = HIGH`, `RELAY_INACTIVE_LEVEL = LOW`
+    - Pulse Timing: 100ms short pulse for 1-click ON; 100ms short, 300ms pause, 100ms short for 2-click OFF
+  - **Preserved Systems**:
+    - DHT11 Sensor: GPIO 4
+    - JMD0.96D-1 I2C OLED Display: GPIO 21 (SDA), GPIO 22 (SCL)
+    - Firebase Firestore REST telemetry push and config polling
 - **Release Version**: `v4.2.0-hybrid-motor-relay`
 - **Architecture Highlights**:
   - **Hybrid Dual Actuation**:

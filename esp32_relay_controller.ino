@@ -1,52 +1,4 @@
-/* ==============================================================================
- * Florify IoT - ESP32 Climate Monitor & Actuator Firmware
- * Module: JMD0.96D-1 OLED + DHT11 Sensor + TB6612FNG (Fan) + 2-Channel Relay (Humidifiers)
- * 
- * Hardware Architecture (Hybrid):
- *   - ESP32 Development Board (NodeMCU / ESP32 DevKit V1)
- *   - DHT11 Temperature & Humidity Sensor: GPIO 4
- *   - JMD0.96D-1 0.96" Monochrome I2C OLED (SSD1306 128x64):
- *       * SDA: GPIO 21
- *       * SCL: GPIO 22
- *       * VCC: 3.3V
- *       * GND: GND
- *       * Default I2C Address: 0x3C (auto-falls back to 0x3D)
- * 
- *   - TB6612FNG Dual H-Bridge Driver (Dedicated to 5V DC Cooling Fan):
- *       * VCC:  ESP32 3.3V (Logic supply)
- *       * VM:   External 5.0V DC Power Supply (+)
- *       * GND:  Common Ground (ESP32 GND + 5V Supply GND + TB6612FNG GND)
- *       * STBY: GPIO 23 (Active HIGH standby pin; driven HIGH to enable driver)
- *       * PWMA: GPIO 18 (Speed / Enable: HIGH = 100% full-power, LOW = OFF)
- *       * AIN1: GPIO 19 (Forward direction: HIGH)
- *       * AIN2: GPIO 5  (Forward direction: LOW)
- *       * Outputs: AO1 connected to Fan (+), AO2 connected to Fan (-)
- *       * Channel B pins (PWMB, BIN1, BIN2) are disconnected / unpinned.
- * 
- *   - 2-Channel Optocoupled Relay Module (Dedicated to 2 Humidifiers' Tactile Buttons):
- *       * VCC:  5.0V (or 3.3V depending on relay optocoupler jumper)
- *       * GND:  Common Ground (ESP32 GND)
- *       * IN1:  GPIO 26 (Relay 1: Humidifier 1 button trigger)
- *       * IN2:  GPIO 27 (Relay 2: Humidifier 2 button trigger)
- *       * Trigger Logic: Active-LOW (LOW = Relay energized / contacts closed, HIGH = de-energized / contacts open)
- *       * Relay 1 COM & NO: Wired across tactile push-button terminals of Humidifier 1.
- *       * Relay 2 COM & NO: Wired across tactile push-button terminals of Humidifier 2.
- *       * Isolated Dry Contact Shorting Operation:
- *           - Idle: Contacts OPEN (infinite resistance, button unpressed).
- *           - 1 Click ON: Contacts CLOSED for 200 ms, then OPEN.
- *           - 2 Clicks OFF: Contacts CLOSED for 200 ms, OPEN 300 ms, CLOSED for 200 ms, then OPEN.
- *           - Both relays actuate in perfect sync to control both humidifiers simultaneously.
- * 
- *   - Status Indicator LED: GPIO 2 (Built-in Blue LED)
- * 
- * Cloud Communication:
- *   - Direct HTTPS REST client using WiFiClientSecure to Google Firebase Firestore v1
- *   - Project: florify-c5dea | Database: (default)
- *   - Telemetry PATCH to: /devices/{DEVICE_ID}
- *   - Historical logging to: /devices/{DEVICE_ID}/readings
- *   - Remote config polling from: /devices/{DEVICE_ID}/config/current
- * ============================================================================== */
-
+// Define the ESP32 GPIO pin connected to the relay's IN1 or IN2
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -69,23 +21,28 @@
 #define OLED_RESET        -1      // Reset pin (-1 if shared or not present)
 
 // TB6612FNG Driver Pins (5V DC Cooling Fan on Channel A)
-#define TB_STBY_PIN       23      // Standby pin (HIGH = enabled)
-#define TB_PWMA_PIN       18      // Fan Speed/Gate (HIGH = Full ON, LOW = OFF)
-#define TB_AIN1_PIN       19      // Fan Direction 1
-#define TB_AIN2_PIN       5       // Fan Direction 2
+// Pins taken from the working fan test sketch. AIN2 is wired to GND on the board,
+// so the ESP32 does not drive it.
+#define TB_AIN1_PIN       13      // Fan direction (HIGH = forward)
+#define TB_PWMA_PIN       26      // Fan speed (PWM)
+#define TB_STBY_PIN       33      // Standby pin (HIGH = enabled)
+
+const int FAN_SPEED = 255;        // 0-255 default fan speed
 
 // 2-Channel Relay Module Pins (Dual Humidifiers Button Trigger)
-#define RELAY_HUM1_PIN    26      // Relay 1 IN: Humidifier 1 button contacts
+// NOTE: Relay 1 moved from GPIO 26 to GPIO 25 because GPIO 26 is now the fan PWM pin.
+#define RELAY_HUM1_PIN    25      // Relay 1 IN: Humidifier 1 button contacts
 #define RELAY_HUM2_PIN    27      // Relay 2 IN: Humidifier 2 button contacts
 
-// Relay Logic Constants (Active-LOW: standard optocoupler relay module)
-#define RELAY_ACTIVE_LEVEL   LOW  // Energize coil -> COM & NO shorted (pressed)
-#define RELAY_INACTIVE_LEVEL HIGH // De-energize coil -> COM & NO open (released)
+// Relay Logic Constants (Active-HIGH: matches the working relay test sketch)
+// If your relay jumper is set to Low-Level Trigger, swap these two values.
+#define RELAY_ACTIVE_LEVEL   HIGH // Energize coil -> COM & NO shorted (pressed)
+#define RELAY_INACTIVE_LEVEL LOW  // De-energize coil -> COM & NO open (released)
 
 #define STATUS_LED_PIN    2       // Built-in Blue LED
 
 // Humidifier Button Timing (Milliseconds)
-const unsigned long CLICK_PULSE_MS    = 200;  // Button contacts shorted duration
+const unsigned long CLICK_PULSE_MS    = 100;  // Button contacts shorted duration
 const unsigned long CLICK_INTERVAL_MS = 300;  // Pause between clicks for 2-click OFF sequence
 
 // ==========================================
@@ -101,7 +58,7 @@ const char* FIREBASE_API_KEY     = "AIzaSyBHQc-tMbFYHlvpsds7oTA635Yebr7k0_o";
 
 // Unique Device ID registered in the Florify Dashboard
 const char* DEVICE_ID        = "ESP32-FLORIFY-01";
-const char* FIRMWARE_VERSION = "v4.2.0-hybrid-motor-relay";
+const char* FIRMWARE_VERSION = "v4.4.0-fan-relay-tested-logic";
 
 // ==========================================
 // 3. OBJECTS & GLOBAL STATE VARIABLES
@@ -159,18 +116,16 @@ const unsigned long CONFIG_POLL_INTERVAL_MS = 15000;  // Poll cloud config every
 
 // Initialize and enable TB6612FNG Motor Driver (Channel A Fan Only)
 void initMotorDriver() {
-  pinMode(TB_STBY_PIN, OUTPUT);
-  pinMode(TB_PWMA_PIN, OUTPUT);
   pinMode(TB_AIN1_PIN, OUTPUT);
-  pinMode(TB_AIN2_PIN, OUTPUT);
+  pinMode(TB_PWMA_PIN, OUTPUT);
+  pinMode(TB_STBY_PIN, OUTPUT);
 
-  // Take driver out of standby (Active HIGH)
+  // Keep driver enabled (out of standby)
   digitalWrite(TB_STBY_PIN, HIGH);
 
-  // Initialize Fan in Safe OFF state (0V across AO1/AO2)
-  digitalWrite(TB_PWMA_PIN, LOW);
+  // Fan starts in safe OFF state
   digitalWrite(TB_AIN1_PIN, LOW);
-  digitalWrite(TB_AIN2_PIN, LOW);
+  analogWrite(TB_PWMA_PIN, 0);
 }
 
 // Initialize 2-Channel Relay Module for Dual Humidifiers
@@ -183,25 +138,30 @@ void initHumidifierRelays() {
   digitalWrite(RELAY_HUM2_PIN, RELAY_INACTIVE_LEVEL);
 }
 
-// Channel A: Set DC Fan State (Full-Power ON / OFF)
+// Channel A: Fan ON (same logic as the working test sketch)
+// AIN1 HIGH with AIN2 tied to GND gives the forward path.
+void turnFanOn(int speed) {
+  digitalWrite(TB_AIN1_PIN, HIGH);
+  analogWrite(TB_PWMA_PIN, speed);
+}
+
+// Channel A: Fan OFF
+void turnFanOff() {
+  digitalWrite(TB_AIN1_PIN, LOW);
+  analogWrite(TB_PWMA_PIN, 0);
+}
+
+// Wrapper used by the rest of the program
 void setFanDrive(bool on) {
   if (on) {
-    // Forward rotation at full 5V power:
-    // AIN1 = HIGH, AIN2 = LOW, PWMA = HIGH
-    digitalWrite(TB_AIN1_PIN, HIGH);
-    digitalWrite(TB_AIN2_PIN, LOW);
-    digitalWrite(TB_PWMA_PIN, HIGH);
+    turnFanOn(FAN_SPEED);
   } else {
-    // Stop / Coast:
-    // PWMA = LOW, AIN1 = LOW, AIN2 = LOW (High-Z stop)
-    digitalWrite(TB_PWMA_PIN, LOW);
-    digitalWrite(TB_AIN1_PIN, LOW);
-    digitalWrite(TB_AIN2_PIN, LOW);
+    turnFanOff();
   }
 }
 
 // Dual Humidifier Relays: Short / Release Tactile Push-Buttons
-// Drives both Relay 1 (GPIO 26) and Relay 2 (GPIO 27) in sync.
+// Drives both Relay 1 (GPIO 25) and Relay 2 (GPIO 27) in sync.
 // When pressed (true): Relays energize, COM & NO close, button shorted.
 // When released (false): Relays de-energize, COM & NO open, button released.
 void setHumidifierPress(bool pressed) {
@@ -247,8 +207,8 @@ void triggerHumidifier(bool turnOn) {
   humClickState = HUM_FIRST_CLICK;
 
   Serial.println(turnOn
-    ? F("[Humidifier] Sending 1 ON click (200ms relay short on GPIO 26 & 27)...")
-    : F("[Humidifier] Sending 2 OFF clicks (200ms short, 300ms open, 200ms short)..."));
+    ? F("[Humidifier] Sending 1 ON click (100ms relay short on GPIO 25 & 27)...")
+    : F("[Humidifier] Sending 2 OFF clicks (100ms short, 300ms open, 100ms short)..."));
 }
 
 void updateHumidifierStateMachine() {
@@ -347,7 +307,7 @@ void renderOledDisplay() {
   display.setCursor(0, 44);
   display.printf("Fan: %s (%s)", isFanActive ? "ON " : "OFF", currentConfig.fanMode == "AUTO" ? "AUTO" : "MAN");
 
-  // Line 4: Humidifier Status (Driven via 2-Channel Relay on GPIO 26 & 27)
+  // Line 4: Humidifier Status (Driven via 2-Channel Relay on GPIO 25 & 27)
   display.setCursor(0, 54);
   if (humClickState != HUM_IDLE) {
     display.print(F("Humidifier: PULSING.."));
@@ -640,13 +600,13 @@ void handleSerialCommands() {
     isFanActive = true;
     setFanDrive(true);
     renderOledDisplay();
-    Serial.println(F("Fan turned ON (TB6612FNG Channel A: 100% full speed)."));
+    Serial.println(F("Fan turned ON (TB6612FNG Channel A)."));
   } else if (cmd == "FAN OFF") {
     currentConfig.fanMode = "FORCE_OFF";
     isFanActive = false;
     setFanDrive(false);
     renderOledDisplay();
-    Serial.println(F("Fan turned OFF (TB6612FNG Channel A: Coast/Stop)."));
+    Serial.println(F("Fan turned OFF (TB6612FNG Channel A)."));
   } else if (cmd == "FAN AUTO") {
     currentConfig.fanMode = "AUTO";
     evaluateActuators(lastTempC, lastHumRH);
@@ -677,8 +637,8 @@ void handleSerialCommands() {
     Serial.print(F("Device ID: ")); Serial.println(DEVICE_ID);
     Serial.print(F("Firmware: ")); Serial.println(FIRMWARE_VERSION);
     Serial.println(F("Actuators:"));
-    Serial.println(F("  - Fan: TB6612FNG Driver (Channel A: STBY=23, PWMA=18, AIN1=19, AIN2=5)"));
-    Serial.println(F("  - Humidifiers: 2-Channel Relay Module (Relay 1=GPIO 26, Relay 2=GPIO 27)"));
+    Serial.println(F("  - Fan: TB6612FNG Driver (Channel A: STBY=33, PWMA=26, AIN1=13, AIN2=GND)"));
+    Serial.println(F("  - Humidifiers: 2-Channel Relay Module (Relay 1=GPIO 25, Relay 2=GPIO 27)"));
     Serial.print(F("WiFi: ")); Serial.println(WiFi.status() == WL_CONNECTED ? "CONNECTED" : "DISCONNECTED");
     if (WiFi.status() == WL_CONNECTED) {
       Serial.print(F("IP: ")); Serial.println(WiFi.localIP());
@@ -696,11 +656,11 @@ void handleSerialCommands() {
   } else if (cmd == "HELP") {
     Serial.println();
     Serial.println(F("===== ESP32 CLIMATE COMMANDS ====="));
-    Serial.println(F("FAN ON     - Turn fan on (TB6612FNG Channel A forward)"));
-    Serial.println(F("FAN OFF    - Turn fan off (TB6612FNG Channel A stop)"));
+    Serial.println(F("FAN ON     - Turn fan on (TB6612FNG Channel A)"));
+    Serial.println(F("FAN OFF    - Turn fan off (TB6612FNG Channel A)"));
     Serial.println(F("FAN AUTO   - Return fan to auto threshold"));
-    Serial.println(F("HUM ON     - Pulse Relays 1 & 2 (1 click: 200ms contact short)"));
-    Serial.println(F("HUM OFF    - Pulse Relays 1 & 2 (2 clicks: 200ms short, 300ms open, 200ms short)"));
+    Serial.println(F("HUM ON     - Pulse Relays 1 & 2 (1 click: 100ms contact short)"));
+    Serial.println(F("HUM OFF    - Pulse Relays 1 & 2 (2 clicks: 100ms short, 300ms open, 100ms short)"));
     Serial.println(F("HUM AUTO   - Return humidifiers to auto threshold"));
     Serial.println(F("STATUS     - Show current hardware status and readings"));
     Serial.println(F("HELP       - Show commands"));
