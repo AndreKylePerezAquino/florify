@@ -1,14 +1,8 @@
 import React from 'react';
 import {
   Cpu,
-  Radio,
   UserCheck,
-  Thermometer,
-  Droplets,
-  Fan,
   AlertTriangle,
-  UserX,
-  Plus,
   ArrowRight,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -28,33 +22,11 @@ export const AdminOverviewPage: React.FC<AdminOverviewPageProps> = ({ navigate }
     alerts,
     pendingUsersCount,
     activeAlertsCount,
-    devicesWithFansOnCount,
     acknowledgeAlert,
   } = useApp();
 
   const onlineDevicesCount = devices.filter((d) => isDeviceConnected(d)).length;
   const assignedDevicesCount = devices.filter((d) => d.assignedDriverUid !== null).length;
-
-  // Temperature and humidity averages from active devices
-  const onlineWithReadings = devices.filter(
-    (d) => isDeviceConnected(d) && d.latestTemperatureC !== undefined
-  );
-  const avgTemp =
-    onlineWithReadings.length > 0
-      ? (
-          onlineWithReadings.reduce((acc, d) => acc + (d.latestTemperatureC || 0), 0) /
-          onlineWithReadings.length
-        ).toFixed(1)
-      : '--';
-  const avgHum =
-    onlineWithReadings.length > 0
-      ? (
-          onlineWithReadings.reduce((acc, d) => acc + (d.latestHumidityRH || 0), 0) /
-          onlineWithReadings.length
-        ).toFixed(1)
-      : '--';
-
-  const devicesWithMistOnCount = devices.filter((d) => d.latestMistState === 'ON').length;
 
   return (
     <div className="space-y-6">
@@ -73,11 +45,11 @@ export const AdminOverviewPage: React.FC<AdminOverviewPageProps> = ({ navigate }
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Total Devices */}
         <div className="bg-white p-4 rounded-xl border border-[#FDC3D1] shadow-xs hover:-translate-y-0.5 hover:shadow-md hover:border-[#FF5C89] transition-all duration-200">
           <div className="flex items-center justify-between text-[#826674] text-xs">
-            <span>ESP32 Fleet</span>
+            <span>Cabin monitors</span>
             <Cpu className="h-4 w-4 text-[#C72C5E]" />
           </div>
           <div className="mt-2 flex items-baseline gap-2">
@@ -108,35 +80,6 @@ export const AdminOverviewPage: React.FC<AdminOverviewPageProps> = ({ navigate }
           </div>
           <div className="mt-1 text-[11px] text-[#826674]">
             {devices.length - assignedDevicesCount} unassigned units
-          </div>
-        </div>
-
-        {/* Relay Actuators (Fan & Mist) */}
-        <div className={`bg-white p-4 rounded-xl border shadow-xs hover:-translate-y-0.5 hover:shadow-md transition-all duration-200 ${
-          devicesWithFansOnCount > 0 || devicesWithMistOnCount > 0 ? 'border-emerald-300 bg-emerald-50/20' : 'border-[#FDC3D1]'
-        }`}>
-          <div className="flex items-center justify-between text-[#826674] text-xs">
-            <span>Relays Active</span>
-            <div className="relative flex items-center justify-center">
-              <Fan className={`h-4 w-4 ${devicesWithFansOnCount > 0 ? 'text-emerald-600 animate-fan-spin' : 'text-[#826674]'}`} />
-              {(devicesWithFansOnCount > 0 || devicesWithMistOnCount > 0) && (
-                <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-mono tabular-nums text-[#2E1826]">
-              {devicesWithFansOnCount}
-            </span>
-            <span className="text-xs text-emerald-700 font-medium">
-              fans · <strong className="font-bold font-mono text-[#2E1826]">{devicesWithMistOnCount}</strong> mist
-            </span>
-          </div>
-          <div className="mt-1 text-[11px] text-[#826674]">
-            Avg: {avgTemp}°C · {avgHum}% RH
           </div>
         </div>
 
